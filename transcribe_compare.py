@@ -152,7 +152,7 @@ def highlight_differences(expected: str, transcript: str) -> str:
         if opcode == "equal":
             highlighted.extend(tr_words[j1:j2])
         elif opcode in ("replace", "delete", "insert"):
-            highlighted.extend([f"*{w}*" for w in tr_words[j1:j2]])
+            highlighted.extend([f"*{w.upper()}*" for w in tr_words[j1:j2]])
     return " ".join(highlighted)
 
 
