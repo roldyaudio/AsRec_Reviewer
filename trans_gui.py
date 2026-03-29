@@ -22,7 +22,7 @@ class MainWindow(QMainWindow):
         layout_main = QVBoxLayout(container)
 
         # TITLE
-        label_title = QLabel("<font size=5>Speech to text tool</font>")
+        label_title = QLabel("<font size=6>Speech to text tool</font>")
         label_title.setAlignment(Qt.AlignHCenter)
         layout_main.addWidget(label_title)
 
