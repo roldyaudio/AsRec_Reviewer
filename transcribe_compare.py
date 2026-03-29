@@ -36,8 +36,11 @@ class WhisperTranscriber(BaseTranscriber):
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model_size = model_size
+        
         print(f"[INFO] Usando dispositivo: {self.device}")
         print(f"[INFO] Cargando modelo Whisper: {model_size}")
+        
+        # Whisper cargará automáticamente large-v3 si pasas ese string
         self.model = whisper.load_model(model_size, device=self.device)
 
     def transcribe(self, audio_path: str, language: Optional[str] = None) -> str:
@@ -155,7 +158,7 @@ def normalize_text(text: str) -> str:
 
 def fuzzy_match(expected: str, transcript: str, threshold: int = 90) -> Optional[bool]:
     """
-    Comparaci贸n robusta usando similitud difusa.
+    Comparacion robusta usando similitud difusa.
     """
     exp_norm = normalize_text(expected)
     tr_norm = normalize_text(transcript)
@@ -351,10 +354,11 @@ def parse_args() -> argparse.Namespace:
         default="resultado_comparacion.xlsx",
         help="Ruta del Excel de salida",
     )
+    # Busca esta sección en parse_args()
     parser.add_argument(
         "--model-size",
         default="medium",
-        help="Modelo Whisper (tiny/base/small/medium/large)",
+        help="Modelo Whisper (tiny/base/small/medium/large/large-v3)", # Añadido large-v3
     )
     parser.add_argument(
         "--language",
