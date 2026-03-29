@@ -3,14 +3,16 @@ import os
 import sys
 import re
 import unicodedata
+from rapidfuzz import fuzz
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
-
+from pydub import AudioSegment
+from pydub.silence import split_on_silence
+import tempfile
 import pandas as pd
 import torch
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
-import difflib
 
 
 # Colores para Excel
@@ -20,14 +22,14 @@ YELLOW_FILL = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="s
 
 
 class BaseTranscriber:
-    """Interfaz base para cambiar fácilmente el backend de transcripción."""
+    """Interfaz base para cambiar f谩cilmente el backend de transcripci贸n."""
 
     def transcribe(self, audio_path: str, language: Optional[str] = None) -> str:
         raise NotImplementedError
 
 
 class WhisperTranscriber(BaseTranscriber):
-    """Implementación con OpenAI Whisper local."""
+    """Implementaci贸n con OpenAI Whisper local."""
 
     def __init__(self, model_size: str = "medium"):
         import whisper
@@ -39,14 +41,71 @@ class WhisperTranscriber(BaseTranscriber):
         self.model = whisper.load_model(model_size, device=self.device)
 
     def transcribe(self, audio_path: str, language: Optional[str] = None) -> str:
-        kwargs = {
-            "fp16": self.device == "cuda",
-        }
+        kwargs = {"fp16": self.device == "cuda"}
         if language:
             kwargs["language"] = language
 
-        result = self.model.transcribe(audio_path, **kwargs)
-        return result.get("text", "").strip()
+        # 1. Obtener duración para decidir si segmentar
+        audio = AudioSegment.from_file(audio_path)
+        duration_secs = len(audio) / 1000.0
+
+        # 2. Si el audio es corto (ej. menos de 15s), transcribir directo
+        if duration_secs < 15.0:
+            result = self.model.transcribe(audio_path, **kwargs)
+            return result.get("text", "").strip()
+
+        # 3. Solo si es un audio largo, usar la lógica de chunks (opcional)
+        chunks = split_on_silence(
+            audio,
+            min_silence_len=700, # Aumentado para evitar micro-segmentos
+            silence_thresh=-45,
+            keep_silence=500     # Más margen ayuda a Whisper a entender el inicio/fin
+        )
+        
+        print(f"[DEBUG] N煤mero de chunks: {len(chunks)}")
+        
+        if not chunks:
+            print("[WARN] Silence split fall贸, usando transcripci贸n directa.")
+            result = self.model.transcribe(audio_path, **kwargs)
+            return result.get("text", "").strip()
+
+        full_text = []
+        print(f"[INFO] Procesando {len(chunks)} chunks...")
+
+        for i, chunk in enumerate(chunks):
+            # 1. Validaci贸n previa: Si el chunk es muy corto, ni siquiera creamos el temporal
+            if len(chunk) < 500:
+                continue
+
+            # 2. Crear el archivo temporal pero con delete=False para manejarlo nosotros
+            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            try:
+                # Exportar el audio al archivo temporal
+                chunk.export(tmp.name, format="wav")
+                
+                # 3. 隆IMPORTANTE! Cerramos el puntero del archivo para que Windows/Linux 
+                # permitan que Whisper lo abra sin bloqueos.
+                tmp.close()
+
+                # Transcribir usando la ruta del archivo
+                result = self.model.transcribe(tmp.name, **kwargs)
+                text = result.get("text", "").strip()
+
+                if text:
+                    full_text.append(text)
+
+            except Exception as e:
+                print(f"[ERROR] Chunk {i} fall贸: {e}")
+
+            finally:
+                # 4. Limpieza garantizada: Si el archivo existe, se borra s铆 o s铆.
+                if os.path.exists(tmp.name):
+                    try:
+                        os.remove(tmp.name)
+                    except Exception as e:
+                        print(f"[WARN] No se pudo borrar temporal {tmp.name}: {e}")
+        print(f"Proceso completado")
+        return " ".join(full_text).strip()
 
 
 @dataclass
@@ -78,10 +137,10 @@ def get_audio_files(folder_path: str, extensions: Iterable[str] = (".wav", ".mp3
 
 def normalize_text(text: str) -> str:
     """
-    Normaliza para comparación robusta:
-    - minúsculas
+    Normaliza para comparaci贸n robusta:
+    - min煤sculas
     - elimina tildes
-    - quita puntuación
+    - quita puntuaci贸n
     - compacta espacios
     """
     text = text or ""
@@ -94,12 +153,9 @@ def normalize_text(text: str) -> str:
     return text
 
 
-def exact_or_contains_match(expected: str, transcript: str) -> Optional[bool]:
+def fuzzy_match(expected: str, transcript: str, threshold: int = 90) -> Optional[bool]:
     """
-    Regla simple:
-    - None si falta texto esperado o transcrito
-    - True si coinciden normalizados o uno contiene al otro
-    - False en cualquier otro caso
+    Comparaci贸n robusta usando similitud difusa.
     """
     exp_norm = normalize_text(expected)
     tr_norm = normalize_text(transcript)
@@ -107,13 +163,9 @@ def exact_or_contains_match(expected: str, transcript: str) -> Optional[bool]:
     if not exp_norm or not tr_norm:
         return None
 
-    if exp_norm == tr_norm:
-        return True
+    ratio = fuzz.ratio(exp_norm, tr_norm)
 
-    if exp_norm in tr_norm or tr_norm in exp_norm:
-        return True
-
-    return False
+    return ratio >= threshold
 
 
 def transcribe_folder(
@@ -133,7 +185,7 @@ def transcribe_folder(
         try:
             transcripts[relative_path] = transcriber.transcribe(audio_path, language=language)
         except Exception as exc:
-            print(f"[ERROR] Falló {relative_path}: {exc}")
+            print(f"[ERROR] Fall贸 {relative_path}: {exc}")
             transcripts[relative_path] = ""
 
     return transcripts
@@ -141,41 +193,50 @@ def transcribe_folder(
 
 def highlight_differences(expected: str, transcript: str) -> str:
     """
-    Genera una versión del texto donde las diferencias se marcan con *palabra*.
+    Genera una versi贸n del texto donde las diferencias se marcan con ~rojo~ (simbolizado con caracteres especiales).
+    Excel no soporta estilos parciales f谩cilmente, as铆 que usamos celdas completas coloreadas,
+    pero podemos marcar diferencias con alg煤n prefijo/sufijo si queremos m谩s detalle.
     """
     exp_words = expected.split()
     tr_words = transcript.split()
-    s = difflib.SequenceMatcher(None, exp_words, tr_words)
-
     highlighted = []
-    for opcode, _i1, _i2, j1, j2 in s.get_opcodes():
-        if opcode == "equal":
-            highlighted.extend(tr_words[j1:j2])
-        elif opcode in ("replace", "delete", "insert"):
-            highlighted.extend([f"*{w.upper()}*" for w in tr_words[j1:j2]])
-    return " ".join(highlighted)
 
+    for w in tr_words:
+        # buscamos si la palabra existe en expected con tolerancia
+        match_found = any(fuzz.ratio(w, ew) > 85 for ew in exp_words)
+
+        if match_found:
+            highlighted.append(w)
+        else:
+            highlighted.append(f"*{w.upper()}*")
+    return " ".join(highlighted)
+    
 
 def export_transcriptions_to_excel(
     transcripts: Dict[str, str],
     output_path: str,
 ) -> List[TranscriptionOnlyResult]:
+    # Si el usuario pasa una carpeta en lugar de archivo, agregamos un nombre por defecto
     if os.path.isdir(output_path):
         output_path = os.path.join(output_path, "resultado.xlsx")
 
+    # Aseguramos que tenga la extensi贸n .xlsx
     if not output_path.lower().endswith(".xlsx"):
         output_path += ".xlsx"
 
+    # Creamos la lista de resultados
     rows: List[TranscriptionOnlyResult] = [
         TranscriptionOnlyResult(audio_file=audio_file, transcript=transcript)
         for audio_file, transcript in sorted(transcripts.items())
     ]
 
+    # Creamos el DataFrame
     df = pd.DataFrame([
-        {"audio_file": row.audio_file, "transcripcion": row.transcript}
+        {"audio_file": row.audio_file, "transcripcion": row.transcript} 
         for row in rows
     ])
 
+    # Guardamos en Excel
     df.to_excel(output_path, index=False)
 
     return rows
@@ -189,20 +250,23 @@ def compare_with_excel(
     output_path: str,
     sheet_name: Optional[str] = None,
 ) -> List[ComparisonResult]:
+    # Si el usuario pasa una carpeta en lugar de archivo, agregamos un nombre por defecto
     if os.path.isdir(output_path):
         output_path = os.path.join(output_path, "resultado_comparacion.xlsx")
 
+    # Aseguramos que tenga la extensi贸n .xlsx
     if not output_path.lower().endswith(".xlsx"):
         output_path += ".xlsx"
 
+    # Leemos Excel de entrada
     df = pd.read_excel(excel_path, sheet_name=sheet_name)
     if isinstance(df, dict):
-        print("[WARN] Se detectaron múltiples hojas, usando la primera.")
+        print("[WARN] Se detectaron m煤ltiples hojas, usando la primera.")
         df = list(df.values())[0]
 
     if audio_column not in df.columns or expected_column not in df.columns:
         raise ValueError(
-            f"Columnas inválidas. Encontradas: {list(df.columns)} | "
+            f"Columnas inv谩lidas. Encontradas: {list(df.columns)} | "
             f"Esperadas: '{audio_column}' y '{expected_column}'"
         )
 
@@ -215,7 +279,7 @@ def compare_with_excel(
         expected_text = str(row[expected_column]) if pd.notna(row[expected_column]) else ""
 
         transcript = transcripts.get(audio_name, "")
-        match = exact_or_contains_match(expected_text, transcript)
+        match = fuzzy_match(expected_text, transcript)
 
         results.append(
             ComparisonResult(
@@ -232,6 +296,7 @@ def compare_with_excel(
     df["coincide"] = match_list
     df.to_excel(output_path, index=False)
 
+    # Pintar en colores usando openpyxl
     wb = load_workbook(output_path)
     ws = wb[sheet_name] if sheet_name else wb.active
 
@@ -245,19 +310,15 @@ def compare_with_excel(
         match_cell = ws.cell(row=row_idx, column=match_col_idx)
 
         if value is True:
-            expected_cell.fill = GREEN_FILL
-            transcript_cell.fill = GREEN_FILL
             match_cell.fill = GREEN_FILL
-        elif value is False:
-            expected_cell.fill = RED_FILL
-            transcript_cell.value = highlight_differences(str(expected_cell.value or ""), str(transcript_cell.value or ""))
-            transcript_cell.fill = RED_FILL
-            match_cell.fill = RED_FILL
-        else:
-            expected_cell.fill = YELLOW_FILL
-            transcript_cell.fill = YELLOW_FILL
-            match_cell.fill = YELLOW_FILL
 
+        elif value is False:
+            # Solo modificas el texto si quieres marcar diferencias
+            transcript_cell.value = highlight_differences(expected_cell.value, transcript_cell.value)
+            match_cell.fill = RED_FILL
+
+        else:
+            match_cell.fill = YELLOW_FILL
     wb.save(output_path)
     return results
 
@@ -298,7 +359,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--language",
         default="es",
-        help="Idioma forzado (ej. es, en) o vacío para autodetectar",
+        help="Idioma forzado (ej. es, en) o vac铆o para autodetectar",
     )
 
     return parser.parse_args()
@@ -317,6 +378,7 @@ def ask_input(prompt: str, default: Optional[str] = None) -> str:
 def main() -> None:
     args = parse_args()
 
+    # 馃憞 DETECTAR DOBLE CLICK / SIN ARGUMENTOS
     interactive_mode = len(sys.argv) == 1
 
     if interactive_mode:
@@ -354,7 +416,7 @@ def main() -> None:
                 "resultado_comparacion.xlsx"
             )
 
-        else:
+        else:  # transcribe-only
             args.output = ask_input(
                 "Ruta de salida",
                 "solo_transcripciones.xlsx"
@@ -366,10 +428,11 @@ def main() -> None:
         )
 
         args.language = ask_input(
-            "Idioma (es/en/... o vacío auto)",
+            "Idioma (es/en/... o vac铆o auto)",
             args.language
         )
 
+    # 馃憞 VALIDACI脫N m铆nima (por si viene por CLI)
     if not args.audio_folder:
         args.audio_folder = ask_input("Ruta de carpeta de audios")
 
@@ -379,12 +442,13 @@ def main() -> None:
     if not args.output:
         args.output = ask_input("Ruta de salida", "resultado.xlsx")
 
-    print("\n[INFO] Configuración final:")
+    print("\n[INFO] Configuraci贸n final:")
     print(f"Modo: {args.mode}")
     print(f"Audios: {args.audio_folder}")
     print(f"Output: {args.output}")
     print()
 
+    # 馃敟 EJECUCI脫N
     transcriber = WhisperTranscriber(model_size=args.model_size)
     language = args.language if args.language else None
 
@@ -400,7 +464,7 @@ def main() -> None:
             output_path=args.output
         )
 
-        print("\n=== Resumen (solo transcripción) ===")
+        print("\n=== Resumen (solo transcripci贸n) ===")
         print(f"Audios procesados: {len(rows)}")
         print(f"Salida: {args.output}")
 
@@ -409,6 +473,7 @@ def main() -> None:
 
         return
 
+    # 馃憞 modo compare
     results = compare_with_excel(
         excel_path=args.excel,
         transcripts=transcripts,
