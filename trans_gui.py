@@ -45,7 +45,7 @@ class MainWindow(QMainWindow):
         grid.addWidget(btn_audio, 1, 2)
 
         # EXCEL (Widgets con self para poder desactivarlos)
-        self.label_excel = QLabel("Excel:")
+        self.label_excel = QLabel("Script:")
         grid.addWidget(self.label_excel, 2, 0)
         self.input_excel = QLineEdit()
         self.btn_excel = QPushButton("Browse")
