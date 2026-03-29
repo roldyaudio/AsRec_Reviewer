@@ -13,15 +13,16 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Speech to Text Transcriber")
-        self.resize(550, 300)
+        self.setWindowTitle("As-Recorded Reviewer")
+        self.resize(600, 250)
+        self.setFixedHeight(250)
 
         container = QWidget()
         self.setCentralWidget(container)
         layout_main = QVBoxLayout(container)
 
         # TITLE
-        label_title = QLabel("<font size=6>AsRec Reviewer</font>")
+        label_title = QLabel("<font size=5>Speech to text tool</font>")
         label_title.setAlignment(Qt.AlignHCenter)
         layout_main.addWidget(label_title)
 
