@@ -64,7 +64,8 @@ class MainWindow(QMainWindow):
         # MODEL
         grid.addWidget(QLabel("Modelo:"), 4, 0)
         self.combo_model = QComboBox()
-        self.combo_model.addItems(["Tiny", "Base", "Small", "Medium", "Large"])
+        # Añadimos "Large-v3" a la lista
+        self.combo_model.addItems(["Tiny", "Base", "Small", "Medium", "Large", "Large-v3"]) 
         self.combo_model.setCurrentText("Medium")
         grid.addWidget(self.combo_model, 4, 1)
 
