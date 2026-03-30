@@ -1,3 +1,7 @@
+from lib_installer import *
+
+install_requirements_in_directory("C:/Apps/AsRec_Reviewer")
+
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QLabel, QMessageBox, QPushButton, QWidget,
     QVBoxLayout, QGridLayout, QLineEdit, QFileDialog, QComboBox
