@@ -19,8 +19,8 @@ def center_app(app_window, app_width: int, app_height: int):
     screen_geometry = screen.availableGeometry()
     
     # Tu lógica: Centro en X, 1/5 de la pantalla en Y
-    x = int((screen_geometry.width() / 2) - (app_width / 2))
-    y = int((screen_geometry.height() / 5) - (app_height / 2))
+    x = int((screen_geometry.width() / 2) - (app_width / 1))
+    y = int((screen_geometry.height() / 2) - (app_height / 2))
     
     app_window.move(screen_geometry.x() + x, screen_geometry.y() + y)
 
