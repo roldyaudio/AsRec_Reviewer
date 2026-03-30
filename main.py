@@ -6,11 +6,23 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QLabel, QMessageBox, QPushButton, QWidget,
     QVBoxLayout, QGridLayout, QLineEdit, QFileDialog, QComboBox
 )
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtCore import Qt
 
 # Import your existing logic
 import transcribe_or_compare as core
 
+def center_app(app_window, app_width: int, app_height: int):
+    """Centers the window to the main display/monitor using PySide6"""
+    app_window.resize(app_width, app_height)
+    screen = QGuiApplication.primaryScreen()
+    screen_geometry = screen.availableGeometry()
+    
+    # Tu lógica: Centro en X, 1/5 de la pantalla en Y
+    x = int((screen_geometry.width() / 2) - (app_width / 2))
+    y = int((screen_geometry.height() / 5) - (app_height / 2))
+    
+    app_window.move(screen_geometry.x() + x, screen_geometry.y() + y)
 
 class MainWindow(QMainWindow):
 
@@ -99,6 +111,9 @@ class MainWindow(QMainWindow):
         btn_run.setStyleSheet("font-weight: bold; height: 30px;")
         btn_run.clicked.connect(self.run_process)
         layout_main.addWidget(btn_run)
+
+        center_app(self, 600, 250)
+        self.setFixedSize(600, 250) # Si quieres que no se pueda estirar
 
     # -------- MÉTODOS DE INTERFAZ --------
 
