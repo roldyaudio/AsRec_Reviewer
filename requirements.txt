@@ -1,8 +1,6 @@
-PySide6==6.8.1
-pandas==2.2.3
-openpyxl==3.1.3
-RapidFuzz==3.10.1
-pydub==0.25.1
-torch==2.5.1+cu124
-torchvision==0.20.1+cu124
-torchaudio==2.5.1+cu124
+rapidfuzz
+pydub
+pandas
+torch
+openpyxl
+openai-whisper
