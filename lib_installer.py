@@ -2,113 +2,127 @@ import os
 import subprocess
 import sys
 import importlib.metadata
-import time
 
-# --- CONFIGURACIÓN ---
-TARGET_DIR = r"C:\Apps\AsRec_Reviewer"
-MAIN_SCRIPT = os.path.join(TARGET_DIR, "main.py")
 
 def ensure_pip():
+    """Ensures pip is available by checking the module via subprocess."""
     try:
+        # Running 'pip --version' is more reliable than 'import pip'
         subprocess.run([sys.executable, "-m", "pip", "--version"],
                        check=True, capture_output=True)
-        print("✅ pip está listo.")
+        print("✅ pip is already installed.")
     except (subprocess.CalledProcessError, FileNotFoundError):
-        print("⚠️ pip no encontrado. Instalando...")
+        print("⚠️ pip not found. Installing with ensurepip...")
         subprocess.check_call([sys.executable, "-m", "ensurepip", "--upgrade"])
+        print("✅ pip installed successfully.")
+
+
+def check_ffmpeg_installed():
+    """Checks if FFmpeg is available in the system PATH."""
+    try:
+        subprocess.run(["ffmpeg", "-version"],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
 
 def is_installed(req_string):
+    """
+    Checks if a package meets the required version using modern importlib.metadata.
+    """
     try:
+        # External library 'packaging' is the standard for parsing requirements.txt
         from packaging.requirements import Requirement
     except ImportError:
-        print("📦 Instalando 'packaging'...")
+        print("📦 Installing 'packaging' for version parsing...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
         from packaging.requirements import Requirement
 
     try:
         req = Requirement(req_string)
+        # Fetch the version of the installed package
         dist_version = importlib.metadata.version(req.name)
-        if not req.specifier or dist_version in req.specifier:
+
+        # If no version constraints (like == or >=), being installed is enough
+        if not req.specifier:
             return True, dist_version
-        return False, dist_version
+
+        # Check if installed version matches the requirement specifier
+        if dist_version in req.specifier:
+            return True, dist_version
+        else:
+            return False, dist_version
+
     except importlib.metadata.PackageNotFoundError:
         return False, None
+    except Exception as e:
+        print(f"❌ Error parsing {req_string}: {e}")
+        return False, None
 
-def install_torch_universal():
-    # Incluimos 'packaging' en la lista por si acaso
-    packages = ["torch==2.5.1", "torchvision", "torchaudio", "torch-directml", "packaging"]
-    
-    print("\n🔍 Verificando entorno PyTorch + DirectML...")
-    to_install = [pkg for pkg in packages if not is_installed(pkg)[0]]
-    
-    if not to_install:
-        print("✅ PyTorch y aceleradores ya están instalados.")
-        return
 
-    has_nvidia = False
-    try:
-        subprocess.run(["nvidia-smi"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        has_nvidia = True
-        print("🎮 GPU NVIDIA detectada.")
-    except:
-        print("🖥️ Usando configuración de GPU genérica (DirectML).")
-
-    install_cmd = [sys.executable, "-m", "pip", "install"] + to_install
-    if has_nvidia:
-        install_cmd += ["--extra-index-url", "https://download.pytorch.org/whl/cu121"]
-    
-    print(f"📦 Instalando: {', '.join(to_install)}...")
-    subprocess.check_call(install_cmd)
-
-def install_requirements(base_dir):
+def install_requirements_in_directory(base_dir):
+    """
+    Walk through folders to find requirements.txt and manage installations.
+    """
+    found_any = False
     for root, _, files in os.walk(base_dir):
-        if "requirements.txt" in files:
-            req_path = os.path.join(root, "requirements.txt")
-            print(f"\n🔍 Procesando dependencias en: {req_path}")
-            
-            with open(req_path, 'r', encoding='utf-8') as f:
-                reqs = [l.strip() for l in f if l.strip() and not l.startswith(('#', '-r'))]
-            
-            for req in reqs:
-                if "torch" in req.lower(): continue # Ya lo manejamos arriba
-                
-                installed, _ = is_installed(req)
-                if not installed:
-                    print(f"📦 Instalando {req}...")
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", req])
-                else:
-                    print(f"✅ {req} OK.")
+        for file in files:
+            if file == "requirements.txt":
+                found_any = True
+                req_path = os.path.join(root, file)
+                print(f"\n🔍 Found requirements: {req_path}")
 
-def run_main_app():
-    """Lanza el script principal en un proceso nuevo para que reconozca los paquetes."""
-    if os.path.exists(MAIN_SCRIPT):
-        print(f"\n🚀 ¡Todo listo! Iniciando aplicación: {MAIN_SCRIPT}")
-        print("-" * 50)
-        # Usamos subprocess.Popen para que el proceso sea independiente
-        subprocess.Popen([sys.executable, MAIN_SCRIPT], creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0)
-    else:
-        print(f"❌ Error: No se encontró {MAIN_SCRIPT}")
+                try:
+                    with open(req_path, 'r', encoding='utf-8') as f:
+                        # Clean lines and ignore comments or recursive flags
+                        requirements = [line.strip() for line in f
+                                        if line.strip() and not line.startswith(('#', '-r'))]
+                except Exception as e:
+                    print(f"❌ Failed to read {req_path}: {e}")
+                    continue
+
+                for req in requirements:
+                    installed, current_v = is_installed(req)
+
+                    if installed:
+                        print(f"✅ {req} is already satisfied (Installed: {current_v}).")
+                    elif current_v:
+                        # Package exists but version is incompatible
+                        print(
+                            f"⚠️ Version conflict for {req}: installed {current_v}. Skipping to avoid environment breakage.")
+                    else:
+                        # Package is missing
+                        print(f"📦 {req} not found. Installing...")
+                        result = subprocess.run([sys.executable, "-m", "pip", "install", req])
+                        if result.returncode == 0:
+                            print(f"✅ Successfully installed {req}")
+                        else:
+                            print(f"❌ Failed to install {req}")
+                            sys.exit(1)
+    if not found_any:
+        print(f"ℹ️ No requirements.txt files found in {base_dir}")
+
 
 if __name__ == "__main__":
-    print("=== INSTALADOR AUTOMÁTICO ASREC REVIEWER ===")
-    
-    if not os.path.exists(TARGET_DIR):
-        print(f"❌ Error: El directorio {TARGET_DIR} no existe.")
-        sys.exit(1)
+    # Safety Check for Python 3.13 (AsRec_Reviewer might use pydub/audioop)
+    if sys.version_info >= (3, 13):
+        print("⚠️ Warning: Python 3.13+ detected. If this app uses 'pydub', it might fail due to missing 'audioop'.")
 
-    try:
-        ensure_pip()
-        install_torch_universal()
-        install_requirements(TARGET_DIR)
-        
-        print("\n✨ Configuración completada con éxito.")
-        
-        # El truco final: lanzar la app
-        run_main_app()
-        
-        print("\n👋 Puedes cerrar esta ventana. La aplicación se está ejecutando.")
-        time.sleep(3) # Pausa para que el usuario lea el éxito
-        
-    except Exception as e:
-        print(f"\n❌ Error crítico durante la instalación: {e}")
-        input("Presiona ENTER para salir...")
+    print("🔧 Checking pip environment...")
+    ensure_pip()
+
+    # Path configuration for AsRec_Reviewer
+    TARGET_DIR = r"C:/Apps/AsRec_Reviewer"
+
+    if os.path.exists(TARGET_DIR):
+        print(f"🚀 Processing directory: {TARGET_DIR}")
+        install_requirements_in_directory(TARGET_DIR)
+
+        # Check FFmpeg as it's common in audio apps
+        if not check_ffmpeg_installed():
+            print("\n⚠️ FFmpeg NOT found! Please install it and add it to PATH for full functionality.")
+
+        print("\n✨ AsRec_Reviewer setup completed.")
+    else:
+        print(f"❌ Error: The directory '{TARGET_DIR}' was not found.")
