@@ -1,5 +1,11 @@
-from lib_installer import *
+from lib_installer import (
+    ensure_pip,
+    install_pytorch_cuda_forced,
+    install_requirements_in_directory,
+)
 
+ensure_pip()
+install_pytorch_cuda_forced()
 install_requirements_in_directory("C:/Apps/AsRec_Reviewer")
 
 from PySide6.QtWidgets import (
