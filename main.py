@@ -1,3 +1,5 @@
+import os
+
 from lib_installer import (
     ensure_pip,
     install_pytorch_cuda_forced,
