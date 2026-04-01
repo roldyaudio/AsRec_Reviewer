@@ -62,6 +62,7 @@ class MainWindow(QMainWindow):
         # AUDIO FOLDER
         grid.addWidget(QLabel("Carpeta audios:"), 1, 0)
         self.input_audio = QLineEdit()
+        self.input_audio.textChanged.connect(self.sync_output_with_audio_folder)
         btn_audio = QPushButton("Browse")
         btn_audio.clicked.connect(self.select_audio_folder)
         grid.addWidget(self.input_audio, 1, 1)
@@ -139,6 +140,12 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Select audio folder")
         if folder:
             self.input_audio.setText(folder)
+
+    def sync_output_with_audio_folder(self, _text=None):
+        audio_folder = self.input_audio.text().strip()
+        if not audio_folder:
+            return
+        self.input_output.setText(os.path.join(audio_folder, "resultado.xlsx"))
 
     def select_excel(self):
         file, _ = QFileDialog.getOpenFileName(self, "Select Excel", filter="Excel (*.xlsx)")
