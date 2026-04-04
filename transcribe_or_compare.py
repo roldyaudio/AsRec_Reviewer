@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
+from collections import Counter
 import tempfile
 import pandas as pd
 import torch
@@ -156,20 +157,24 @@ def normalize_text(text: str) -> str:
     return text
 
 
-def fuzzy_match(expected: str, transcript: str, threshold: int = 90) -> Optional[bool]:
-    """
-    Comparacion robusta usando similitud difusa.
-    """
+def fuzzy_match(expected: str, transcript: str, threshold: int = 95) -> Optional[bool]:
     exp_norm = normalize_text(expected)
     tr_norm = normalize_text(transcript)
 
     if not exp_norm or not tr_norm:
         return None
 
-    ratio = fuzz.ratio(exp_norm, tr_norm)
+    ratio = fuzz.token_sort_ratio(exp_norm, tr_norm)
 
-    return ratio >= threshold
+    if ratio >= threshold:
+        if has_word_difference(exp_norm, tr_norm):
+            return None  # 🟡 palabras distintas aunque sea similar
+        return True     # 🟢 match real
 
+    return False        # 🔴 no cumple threshold
+
+def has_word_difference(a: str, b: str) -> bool:
+    return Counter(a.split()) != Counter(b.split())
 
 def transcribe_folder(
     transcriber: BaseTranscriber,
