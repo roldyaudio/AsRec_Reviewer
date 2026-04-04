@@ -33,13 +33,16 @@ def center_app(app_window, app_width: int, app_height: int):
     app_window.move(screen_geometry.x() + x , screen_geometry.y() + y)
 
 class MainWindow(QMainWindow):
+    ENGINE_MODELS = {
+        "whisper": ["Tiny", "Base", "Small", "Medium", "Large", "Large-v3"],
+    }
 
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("As-Recorded Reviewer")
-        self.resize(600, 250)
-        self.setFixedHeight(250)
+        self.resize(600, 320)
+        self.setFixedHeight(320)
 
         container = QWidget()
         self.setCentralWidget(container)
@@ -61,42 +64,21 @@ class MainWindow(QMainWindow):
         self.combo_mode.currentIndexChanged.connect(self.toggle_excel_fields)
         grid.addWidget(self.combo_mode, 0, 1)
 
-        # AUDIO FOLDER
-        grid.addWidget(QLabel("Carpeta audios:"), 1, 0)
-        self.input_audio = QLineEdit()
-        self.input_audio.textChanged.connect(self.sync_output_with_audio_folder)
-        btn_audio = QPushButton("Browse")
-        btn_audio.clicked.connect(self.select_audio_folder)
-        grid.addWidget(self.input_audio, 1, 1)
-        grid.addWidget(btn_audio, 1, 2)
-
-        # EXCEL (Widgets con self para poder desactivarlos)
-        self.label_excel = QLabel("Script:")
-        grid.addWidget(self.label_excel, 2, 0)
-        self.input_excel = QLineEdit()
-        self.btn_excel = QPushButton("Browse")
-        self.btn_excel.clicked.connect(self.select_excel)
-        grid.addWidget(self.input_excel, 2, 1)
-        grid.addWidget(self.btn_excel, 2, 2)
-
-        # OUTPUT
-        grid.addWidget(QLabel("Output:"), 3, 0)
-        self.input_output = QLineEdit("resultado.xlsx")
-        btn_output = QPushButton("Browse")
-        btn_output.clicked.connect(self.select_output)
-        grid.addWidget(self.input_output, 3, 1)
-        grid.addWidget(btn_output, 3, 2)
+        # ENGINE
+        grid.addWidget(QLabel("Motor:"), 1, 0)
+        self.combo_engine = QComboBox()
+        self.combo_engine.addItem("Whisper", "whisper")
+        self.combo_engine.currentIndexChanged.connect(self.update_model_options)
+        grid.addWidget(self.combo_engine, 1, 1)
 
         # MODEL
-        grid.addWidget(QLabel("Modelo:"), 4, 0)
+        grid.addWidget(QLabel("Modelo:"), 2, 0)
         self.combo_model = QComboBox()
-        # Añadimos "Large-v3" a la lista
-        self.combo_model.addItems(["Tiny", "Base", "Small", "Medium", "Large", "Large-v3"]) 
-        self.combo_model.setCurrentText("Medium")
-        grid.addWidget(self.combo_model, 4, 1)
+        grid.addWidget(self.combo_model, 2, 1)
+        self.update_model_options()
 
         # LANGUAGE (ComboBox con datos internos)
-        grid.addWidget(QLabel("Idioma:"), 5, 0)
+        grid.addWidget(QLabel("Idioma:"), 3, 0)
         self.combo_lang = QComboBox()
         # Usamos itemData para guardar el código ISO ("es") mientras mostramos el nombre
         languages = [
@@ -111,18 +93,46 @@ class MainWindow(QMainWindow):
         for name, code in languages:
             self.combo_lang.addItem(name, code)
         
-        grid.addWidget(self.combo_lang, 5, 1)
+        grid.addWidget(self.combo_lang, 3, 1)
+
+        # AUDIO FOLDER
+        grid.addWidget(QLabel("Carpeta audios:"), 4, 0)
+        self.input_audio = QLineEdit()
+        self.input_audio.textChanged.connect(self.sync_output_with_audio_folder)
+        btn_audio = QPushButton("Browse")
+        btn_audio.clicked.connect(self.select_audio_folder)
+        grid.addWidget(self.input_audio, 4, 1)
+        grid.addWidget(btn_audio, 4, 2)
+
+        # EXCEL (Widgets con self para poder desactivarlos)
+        self.label_excel = QLabel("Script:")
+        grid.addWidget(self.label_excel, 5, 0)
+        self.input_excel = QLineEdit()
+        self.btn_excel = QPushButton("Browse")
+        self.btn_excel.clicked.connect(self.select_excel)
+        grid.addWidget(self.input_excel, 5, 1)
+        grid.addWidget(self.btn_excel, 5, 2)
+
+        # OUTPUT
+        grid.addWidget(QLabel("Output:"), 6, 0)
+        self.input_output = QLineEdit("resultado.xlsx")
+        btn_output = QPushButton("Browse")
+        btn_output.clicked.connect(self.select_output)
+        grid.addWidget(self.input_output, 6, 1)
+        grid.addWidget(btn_output, 6, 2)
 
         layout_main.addLayout(grid)
 
         # RUN BUTTON
         btn_run = QPushButton("Run")
-        btn_run.setStyleSheet("font-weight: bold; height: 30px;")
+        btn_run.setStyleSheet("font-weight: bold; height: 30px; max-width: 160px;")
         btn_run.clicked.connect(self.run_process)
+        btn_run.setFixedWidth(160)
         layout_main.addWidget(btn_run)
+        layout_main.setAlignment(btn_run, Qt.AlignHCenter)
 
-        center_app(self, 600, 250)
-        self.setFixedSize(600, 250) # Si quieres que no se pueda estirar
+        center_app(self, 600, 320)
+        self.setFixedSize(600, 320) # Si quieres que no se pueda estirar
 
     # -------- MÉTODOS DE INTERFAZ --------
 
@@ -135,6 +145,15 @@ class MainWindow(QMainWindow):
         
         if not is_compare:
             self.input_excel.clear()
+
+    def update_model_options(self):
+        """Actualiza los modelos disponibles según el motor seleccionado."""
+        engine = self.combo_engine.currentData()
+        models = self.ENGINE_MODELS.get(engine, [])
+        self.combo_model.clear()
+        self.combo_model.addItems(models)
+        if "Medium" in models:
+            self.combo_model.setCurrentText("Medium")
 
     # -------- MÉTODOS DE SELECCIÓN --------
 
@@ -168,6 +187,7 @@ class MainWindow(QMainWindow):
             excel = self.input_excel.text()
             output = self.input_output.text()
             model = self.combo_model.currentText().lower()
+            engine = self.combo_engine.currentData()
             
             # Obtenemos el código ISO (ej: "es") almacenado en el itemData
             language = self.combo_lang.currentData()
@@ -181,7 +201,10 @@ class MainWindow(QMainWindow):
                 return
 
             # Ejecución del Core
-            transcriber = core.WhisperTranscriber(model_size=model)
+            if engine == "whisper":
+                transcriber = core.WhisperTranscriber(model_size=model)
+            else:
+                raise ValueError(f"Motor no soportado: {engine}")
 
             transcripts = core.transcribe_folder(
                 transcriber=transcriber,
