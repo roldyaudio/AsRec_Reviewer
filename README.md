@@ -154,3 +154,22 @@ Y aplica color en la columna `coincide`:
 - Usa `medium` como equilibrio entre velocidad/calidad.
 - Si tienes GPU, `torch` + CUDA reduce significativamente el tiempo.
 - Para lotes grandes, separa audios por carpeta y ejecuta por tandas.
+
+---
+
+## ⚠️ Disclaimer importante sobre GPU / CUDA (Whisper)
+
+Para evitar expectativas incorrectas al usar Whisper con GPU:
+
+- El script **intenta usar CUDA automáticamente** cuando detecta una GPU compatible.
+- **No todos los modelos caben en cualquier GPU**: a mayor tamaño del modelo, mayor consumo de VRAM.
+- Si seleccionas `--model-size large`, considera como referencia una GPU con **~10 GB de VRAM o más** para trabajar con mayor estabilidad.
+- Si no hay VRAM suficiente, puedes ver errores de memoria (OOM), caídas de rendimiento o fallback a CPU (mucho más lento).
+
+### Recomendación práctica por tamaño de modelo
+
+- `tiny` / `base`: equipos modestos (rápidos, menor precisión).
+- `small` / `medium`: mejor balance calidad/tiempo.
+- `large`: mayor calidad, pero requiere más recursos de GPU (referencia: ~10 GB VRAM).
+
+> Este disclaimer aplica al motor actual de STT basado en Whisper. Más adelante se incorporarán otros motores, cada uno con sus propios requisitos de hardware.
