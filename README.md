@@ -1,175 +1,154 @@
 # AsRec Reviewer
 
-Herramienta en Python para transcribir audios con Whisper y generar reportes en Excel.
+Herramienta de **Speech-to-Text (STT)** con interfaz gráfica (PySide6) para:
 
-Incluye dos flujos principales:
-1. **compare**: transcribe y compara contra un guion esperado en Excel.
-2. **transcribe-only**: solo transcribe y exporta resultados a un Excel nuevo.
+1. **Compare**: transcribir audios y compararlos contra un Excel de referencia.
+2. **Transcribe-Only**: transcribir audios y exportar resultados a un Excel nuevo.
 
-Además, el script soporta:
-- Ejecución por **CLI** y también **modo interactivo** (si se ejecuta sin argumentos).
-- Uso automático de **GPU (CUDA)** si está disponible, o CPU en caso contrario.
-- Comparación robusta con **fuzzy matching** (`rapidfuzz`).
-- Resaltado visual en Excel:
-  - 🟩 Verde: coincide.
-  - 🟥 Rojo: no coincide.
-  - 🟨 Amarillo: no evaluable.
-- Segmentación por silencios para audios largos, mejorando la robustez de transcripción.
+## Novedades principales
+
+- ✅ **Motor seleccionable**:
+  - **Whisper local** (CPU/GPU).
+  - **Deepgram API** (modelo `nova-3`).
+- ✅ **Paralelismo con workers** para Deepgram usando `ThreadPoolExecutor`.
+- ✅ **Ingreso de API Key de Deepgram** desde la UI (prompt seguro tipo password).
+- ✅ Soporte de modelo Whisper `large-v3`.
+- ✅ Detección recursiva de audio (`.wav`, `.mp3`, `.m4a`).
+- ✅ Resaltado visual de resultados en Excel (`coincide`: verde/rojo/amarillo).
 
 ---
 
 ## Requisitos
 
-Instala dependencias:
+- Python 3.10+
+- FFmpeg en `PATH` (requerido por `pydub`)
+
+Instalación rápida:
 
 ```bash
-pip install openai-whisper torch pandas openpyxl rapidfuzz pydub
+pip install -r requirements.txt
 ```
 
-> Nota: `pydub` requiere `ffmpeg` instalado en el sistema para leer/exportar varios formatos de audio.
+Dependencias principales:
+- `PySide6`
+- `openai-whisper`
+- `torch`
+- `deepgram-sdk`
+- `pandas`
+- `openpyxl`
+- `rapidfuzz`
+- `pydub`
+
+> Nota: Whisper usa CUDA automáticamente si `torch.cuda.is_available()` es verdadero.
 
 ---
 
-## Archivos soportados
+## Ejecución
 
-La búsqueda de audios en `--audio-folder` es recursiva y detecta:
+```bash
+python main.py
+```
+
+La aplicación abre una interfaz con los campos:
+- **Modo**: `Compare` o `Transcribe-Only`
+- **Motor**: `Whisper` o `Deepgram`
+- **Modelo**: según motor
+- **Idioma**
+- **Carpeta de audios**
+- **Excel (Script)** (solo en Compare)
+- **Output**
+
+---
+
+## Motores y modelos
+
+### Whisper (local)
+
+Modelos disponibles en la UI:
+- `Tiny`
+- `Base`
+- `Small`
+- `Medium` (default)
+- `Large`
+- `Large-v3`
+
+Comportamiento:
+- Usa **GPU** si hay CUDA; si no, usa CPU.
+- Audios cortos (<15s): transcripción directa.
+- Audios largos: segmentación por silencios para robustez.
+
+### Deepgram (API)
+
+Modelo disponible:
+- `nova-3`
+
+Comportamiento:
+- Solicita la **DEEPGRAM_API_KEY** al presionar **Run**.
+- Procesa audios en paralelo con workers.
+
+Configuración de concurrencia:
+
+```bash
+# opcional (default: 4)
+export DEEPGRAM_MAX_WORKERS=8
+```
+
+En Windows PowerShell:
+
+```powershell
+$env:DEEPGRAM_MAX_WORKERS = "8"
+```
+
+---
+
+## API Key de Deepgram
+
+Cuando el motor seleccionado es **Deepgram**, la app muestra un cuadro para pegar tu API key.
+
+- No se ejecuta si la key está vacía.
+- Puedes gestionar la concurrencia por variable `DEEPGRAM_MAX_WORKERS`.
+
+> Recomendación: evita hardcodear keys en código o repositorio.
+
+---
+
+## Formato del Excel (modo Compare)
+
+Actualmente el flujo de comparación usa estas columnas:
+- `Filename` → nombre/ruta relativa del audio
+- `Script` → texto esperado
+
+Salida:
+- `transcripcion`
+- `coincide` (`True`, `False`, `None`)
+
+Colores en `coincide`:
+- 🟩 `True`
+- 🟥 `False`
+- 🟨 `None`
+
+---
+
+## Archivos de audio soportados
+
+Búsqueda recursiva en la carpeta seleccionada:
 - `.wav`
 - `.mp3`
 - `.m4a`
 
 ---
 
-## Modos de uso
+## Notas de rendimiento
 
-## 1) Modo `transcribe-only`
-
-Transcribe todos los audios y crea un Excel con:
-- `audio_file`
-- `transcripcion`
-
-Ejemplo:
-
-```bash
-python transcribe_compare.py \
-  --mode transcribe-only \
-  --audio-folder ./audios \
-  --output ./solo_transcripciones.xlsx \
-  --model-size medium \
-  --language es
-```
-
-Si `--output` apunta a carpeta, se genera automáticamente `resultado.xlsx` dentro de esa carpeta.
+- **Whisper**: mayor calidad suele implicar más VRAM/tiempo (`large`, `large-v3`).
+- **Deepgram**: para lotes grandes suele rendir mejor con workers > 1 (según red y cuota API).
+- Si estás limitado por hardware local, Deepgram puede reducir carga local al delegar STT en API.
 
 ---
 
-## 2) Modo `compare`
+## Estructura rápida del repo
 
-Transcribe audios y compara contra un Excel de referencia.
+- `main.py`: UI y orquestación principal.
+- `transcribe_or_compare.py`: motores STT, transcripción y comparación Excel.
+- `lib_installer.py`: utilidades para instalación/verificación de entorno.
 
-### Formato esperado del Excel de entrada
-
-Debe incluir al menos dos columnas (configurables):
-- `audio_file`: nombre o ruta relativa del audio (ej. `carpeta1/audio_001.wav`)
-- `guion`: texto esperado
-
-### Ejemplo de ejecución
-
-```bash
-python transcribe_compare.py \
-  --mode compare \
-  --audio-folder ./audios \
-  --excel ./guiones.xlsx \
-  --audio-column audio_file \
-  --expected-column guion \
-  --sheet Hoja1 \
-  --output ./resultado_comparacion.xlsx \
-  --model-size medium \
-  --language es
-```
-
-Si `--output` apunta a carpeta, se genera `resultado_comparacion.xlsx`.
-
-Si hay diferencias, el texto transcrito puede marcar palabras no encontradas con formato `*PALABRA*` para facilitar revisión.
-
----
-
-## Modo interactivo (sin argumentos)
-
-Si ejecutas:
-
-```bash
-python transcribe_compare.py
-```
-
-el script entra en modo interactivo y te pide paso a paso:
-- modo de ejecución,
-- rutas de audios / Excel,
-- columnas,
-- hoja,
-- salida,
-- modelo,
-- idioma.
-
-Esto facilita usarlo con doble clic o sin recordar todos los flags.
-
----
-
-## Argumentos CLI
-
-- `--mode`: `compare` | `transcribe-only` (default: `compare`)
-- `--audio-folder`: carpeta con audios
-- `--excel`: Excel de entrada (solo `compare`)
-- `--audio-column`: columna de audio (default: `audio_file`)
-- `--expected-column`: columna de guion (default: `guion`)
-- `--sheet`: hoja específica (opcional)
-- `--output`: archivo o carpeta de salida
-- `--model-size`: `tiny`, `base`, `small`, `medium`, `large`
-- `--language`: idioma forzado (`es`, `en`, etc.) o vacío para autodetección
-
----
-
-## Lógica de transcripción
-
-- Para audios cortos (< 15s): transcripción directa.
-- Para audios largos: segmentación por silencios y transcripción por chunks.
-- Limpieza segura de archivos temporales por cada chunk.
-
----
-
-## Resultado de comparación
-
-En modo `compare`, el Excel de salida agrega:
-- `transcripcion`
-- `coincide` (`True`, `False`, `None`)
-
-Y aplica color en la columna `coincide`:
-- `True` → verde
-- `False` → rojo
-- `None` → amarillo
-
----
-
-## Sugerencias operativas
-
-- Usa `medium` como equilibrio entre velocidad/calidad.
-- Si tienes GPU, `torch` + CUDA reduce significativamente el tiempo.
-- Para lotes grandes, separa audios por carpeta y ejecuta por tandas.
-
----
-
-## ⚠️ Disclaimer importante sobre GPU / CUDA (Whisper)
-
-Para evitar expectativas incorrectas al usar Whisper con GPU:
-
-- El script **intenta usar CUDA automáticamente** cuando detecta una GPU compatible.
-- **No todos los modelos caben en cualquier GPU**: a mayor tamaño del modelo, mayor consumo de VRAM.
-- Si seleccionas `--model-size large`, considera como referencia una GPU con **~10 GB de VRAM o más** para trabajar con mayor estabilidad.
-- Si no hay VRAM suficiente, puedes ver errores de memoria (OOM), caídas de rendimiento o fallback a CPU (mucho más lento).
-
-### Recomendación práctica por tamaño de modelo
-
-- `tiny` / `base`: equipos modestos (rápidos, menor precisión).
-- `small` / `medium`: mejor balance calidad/tiempo.
-- `large`: mayor calidad, pero requiere más recursos de GPU (referencia: ~10 GB VRAM).
-
-> Este disclaimer aplica al motor actual de STT basado en Whisper. Más adelante se incorporarán otros motores, cada uno con sus propios requisitos de hardware.
