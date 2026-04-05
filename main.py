@@ -12,7 +12,7 @@ install_requirements_in_directory("C:/Apps/AsRec_Reviewer")
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QLabel, QMessageBox, QPushButton, QWidget,
-    QVBoxLayout, QGridLayout, QLineEdit, QFileDialog, QComboBox
+    QVBoxLayout, QGridLayout, QLineEdit, QFileDialog, QComboBox, QInputDialog
 )
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtCore import Qt
@@ -35,6 +35,7 @@ def center_app(app_window, app_width: int, app_height: int):
 class MainWindow(QMainWindow):
     ENGINE_MODELS = {
         "whisper": ["Tiny", "Base", "Small", "Medium", "Large", "Large-v3"],
+        "deepgram": ["nova-3"],
     }
 
     def __init__(self):
@@ -68,6 +69,7 @@ class MainWindow(QMainWindow):
         grid.addWidget(QLabel("Motor:"), 1, 0)
         self.combo_engine = QComboBox()
         self.combo_engine.addItem("Whisper", "whisper")
+        self.combo_engine.addItem("Deepgram", "deepgram")
         self.combo_engine.currentIndexChanged.connect(self.update_model_options)
         grid.addWidget(self.combo_engine, 1, 1)
 
@@ -152,7 +154,7 @@ class MainWindow(QMainWindow):
         models = self.ENGINE_MODELS.get(engine, [])
         self.combo_model.clear()
         self.combo_model.addItems(models)
-        if "Medium" in models:
+        if engine == "whisper" and "Medium" in models:
             self.combo_model.setCurrentText("Medium")
 
     # -------- MÉTODOS DE SELECCIÓN --------
@@ -203,6 +205,23 @@ class MainWindow(QMainWindow):
             # Ejecución del Core
             if engine == "whisper":
                 transcriber = core.WhisperTranscriber(model_size=model)
+            elif engine == "deepgram":
+                deepgram_api_key, ok = QInputDialog.getText(
+                    self,
+                    "Deepgram API Key",
+                    "Pega tu DEEPGRAM_API_KEY:",
+                    QLineEdit.Password,
+                )
+                deepgram_api_key = deepgram_api_key.strip()
+                if not ok or not deepgram_api_key:
+                    QMessageBox.warning(self, "Error", "Debes ingresar una DEEPGRAM_API_KEY válida")
+                    return
+                deepgram_workers = int(os.getenv("DEEPGRAM_MAX_WORKERS", "4"))
+                transcriber = core.DeepgramTranscriber(
+                    api_key=deepgram_api_key,
+                    model=model,
+                    max_workers=deepgram_workers,
+                )
             else:
                 raise ValueError(f"Motor no soportado: {engine}")
 
