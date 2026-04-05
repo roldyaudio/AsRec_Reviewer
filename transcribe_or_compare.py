@@ -6,6 +6,8 @@ import unicodedata
 from rapidfuzz import fuzz
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
+
+from deepgram import DeepgramClient, FileSource, PrerecordedOptions
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 from collections import Counter
@@ -23,14 +25,46 @@ YELLOW_FILL = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="s
 
 
 class BaseTranscriber:
-    """Interfaz base para cambiar f谩cilmente el backend de transcripci贸n."""
+    """Interfaz base para cambiar facilmente el backend de transcripcion."""
 
     def transcribe(self, audio_path: str, language: Optional[str] = None) -> str:
         raise NotImplementedError
 
 
+
+
+class DeepgramTranscriber(BaseTranscriber):
+    """Implementación usando Deepgram API (nova-3)."""
+
+    def __init__(self, api_key: str, model: str = "nova-3"):
+        if not api_key:
+            raise ValueError("Deepgram API key no configurada. Define DEEPGRAM_API_KEY.")
+
+        self.api_key = api_key
+        self.model = model
+
+        print("[INFO] Inicializando Deepgram...")
+        print(f"[INFO] Modelo Deepgram: {model}")
+
+        self.client = DeepgramClient(api_key)
+
+    def transcribe(self, audio_path: str, language: Optional[str] = None) -> str:
+        payload: FileSource
+        with open(audio_path, "rb") as file:
+            payload = {"buffer": file.read()}
+
+        options = PrerecordedOptions(
+            model=self.model,
+            smart_format=True,
+            language=language if language else None,
+        )
+
+        response = self.client.listen.rest.v("1").transcribe_file(payload, options)
+        transcript = response.results.channels[0].alternatives[0].transcript
+        return (transcript or "").strip()
+
 class WhisperTranscriber(BaseTranscriber):
-    """Implementaci贸n con OpenAI Whisper local."""
+    """Implementacion con OpenAI Whisper local."""
 
     def __init__(self, model_size: str = "medium"):
         import whisper
@@ -66,10 +100,10 @@ class WhisperTranscriber(BaseTranscriber):
             keep_silence=500     # Más margen ayuda a Whisper a entender el inicio/fin
         )
         
-        print(f"[DEBUG] N煤mero de chunks: {len(chunks)}")
+        print(f"[DEBUG] Numero de chunks: {len(chunks)}")
         
         if not chunks:
-            print("[WARN] Silence split fall贸, usando transcripci贸n directa.")
+            print("[WARN] Silence split fallo, usando transcripcion directa.")
             result = self.model.transcribe(audio_path, **kwargs)
             return result.get("text", "").strip()
 
@@ -77,7 +111,7 @@ class WhisperTranscriber(BaseTranscriber):
         print(f"[INFO] Procesando {len(chunks)} chunks...")
 
         for i, chunk in enumerate(chunks):
-            # 1. Validaci贸n previa: Si el chunk es muy corto, ni siquiera creamos el temporal
+            # 1. Validacion previa: Si el chunk es muy corto, ni siquiera creamos el temporal
             if len(chunk) < 500:
                 continue
 
@@ -87,7 +121,7 @@ class WhisperTranscriber(BaseTranscriber):
                 # Exportar el audio al archivo temporal
                 chunk.export(tmp.name, format="wav")
                 
-                # 3. 隆IMPORTANTE! Cerramos el puntero del archivo para que Windows/Linux 
+                # 3. IMPORTANTE: Cerramos el puntero del archivo para que Windows/Linux 
                 # permitan que Whisper lo abra sin bloqueos.
                 tmp.close()
 
@@ -99,10 +133,10 @@ class WhisperTranscriber(BaseTranscriber):
                     full_text.append(text)
 
             except Exception as e:
-                print(f"[ERROR] Chunk {i} fall贸: {e}")
+                print(f"[ERROR] Chunk {i} fallo: {e}")
 
             finally:
-                # 4. Limpieza garantizada: Si el archivo existe, se borra s铆 o s铆.
+                # 4. Limpieza garantizada: Si el archivo existe, se borra si o si.
                 if os.path.exists(tmp.name):
                     try:
                         os.remove(tmp.name)
@@ -141,10 +175,10 @@ def get_audio_files(folder_path: str, extensions: Iterable[str] = (".wav", ".mp3
 
 def normalize_text(text: str) -> str:
     """
-    Normaliza para comparaci贸n robusta:
-    - min煤sculas
+    Normaliza para comparacion robusta:
+    - minusculas
     - elimina tildes
-    - quita puntuaci贸n
+    - quita puntuacion
     - compacta espacios
     """
     text = text or ""
@@ -193,7 +227,7 @@ def transcribe_folder(
         try:
             transcripts[relative_path] = transcriber.transcribe(audio_path, language=language)
         except Exception as exc:
-            print(f"[ERROR] Fall贸 {relative_path}: {exc}")
+            print(f"[ERROR] Fallo {relative_path}: {exc}")
             transcripts[relative_path] = ""
 
     return transcripts
@@ -201,9 +235,9 @@ def transcribe_folder(
 
 def highlight_differences(expected: str, transcript: str) -> str:
     """
-    Genera una versi贸n del texto donde las diferencias se marcan con ~rojo~ (simbolizado con caracteres especiales).
-    Excel no soporta estilos parciales f谩cilmente, as铆 que usamos celdas completas coloreadas,
-    pero podemos marcar diferencias con alg煤n prefijo/sufijo si queremos m谩s detalle.
+    Genera una version del texto donde las diferencias se marcan con ~rojo~ (simbolizado con caracteres especiales).
+    Excel no soporta estilos parciales facilmente, asi que usamos celdas completas coloreadas,
+    pero podemos marcar diferencias con algun prefijo/sufijo si queremos mas detalle.
     """
     exp_words = expected.split()
     tr_words = transcript.split()
@@ -228,7 +262,7 @@ def export_transcriptions_to_excel(
     if os.path.isdir(output_path):
         output_path = os.path.join(output_path, "resultado.xlsx")
 
-    # Aseguramos que tenga la extensi贸n .xlsx
+    # Aseguramos que tenga la extension .xlsx
     if not output_path.lower().endswith(".xlsx"):
         output_path += ".xlsx"
 
@@ -262,19 +296,19 @@ def compare_with_excel(
     if os.path.isdir(output_path):
         output_path = os.path.join(output_path, "resultado_comparacion.xlsx")
 
-    # Aseguramos que tenga la extensi贸n .xlsx
+    # Aseguramos que tenga la extension .xlsx
     if not output_path.lower().endswith(".xlsx"):
         output_path += ".xlsx"
 
     # Leemos Excel de entrada
     df = pd.read_excel(excel_path, sheet_name=sheet_name)
     if isinstance(df, dict):
-        print("[WARN] Se detectaron m煤ltiples hojas, usando la primera.")
+        print("[WARN] Se detectaron multiples hojas, usando la primera.")
         df = list(df.values())[0]
 
     if audio_column not in df.columns or expected_column not in df.columns:
         raise ValueError(
-            f"Columnas inv谩lidas. Encontradas: {list(df.columns)} | "
+            f"Columnas invalidas. Encontradas: {list(df.columns)} | "
             f"Esperadas: '{audio_column}' y '{expected_column}'"
         )
 
@@ -361,14 +395,25 @@ def parse_args() -> argparse.Namespace:
     )
     # Busca esta sección en parse_args()
     parser.add_argument(
+        "--engine",
+        choices=["whisper", "deepgram"],
+        default="whisper",
+        help="Motor de transcripción: whisper o deepgram",
+    )
+    parser.add_argument(
         "--model-size",
         default="medium",
-        help="Modelo Whisper (tiny/base/small/medium/large/large-v3)", # Añadido large-v3
+        help="Modelo Whisper (tiny/base/small/medium/large/large-v3)",
+    )
+    parser.add_argument(
+        "--deepgram-model",
+        default="nova-3",
+        help="Modelo Deepgram (ej. nova-3)",
     )
     parser.add_argument(
         "--language",
         default="es",
-        help="Idioma forzado (ej. es, en) o vac铆o para autodetectar",
+        help="Idioma forzado (ej. es, en) o vacio para autodetectar",
     )
 
     return parser.parse_args()
@@ -387,7 +432,7 @@ def ask_input(prompt: str, default: Optional[str] = None) -> str:
 def main() -> None:
     args = parse_args()
 
-    # 馃憞 DETECTAR DOBLE CLICK / SIN ARGUMENTOS
+    # Detectar doble click / sin argumentos
     interactive_mode = len(sys.argv) == 1
 
     if interactive_mode:
@@ -431,17 +476,28 @@ def main() -> None:
                 "solo_transcripciones.xlsx"
             )
 
-        args.model_size = ask_input(
-            "Modelo Whisper",
-            args.model_size
-        )
+        args.engine = ask_input(
+            "Motor (whisper/deepgram)",
+            args.engine
+        ).lower()
+
+        if args.engine == "whisper":
+            args.model_size = ask_input(
+                "Modelo Whisper",
+                args.model_size
+            )
+        else:
+            args.deepgram_model = ask_input(
+                "Modelo Deepgram",
+                args.deepgram_model
+            )
 
         args.language = ask_input(
-            "Idioma (es/en/... o vac铆o auto)",
+            "Idioma (es/en/... o vacio auto)",
             args.language
         )
 
-    # 馃憞 VALIDACI脫N m铆nima (por si viene por CLI)
+    # Validacion minima (por si viene por CLI)
     if not args.audio_folder:
         args.audio_folder = ask_input("Ruta de carpeta de audios")
 
@@ -451,15 +507,20 @@ def main() -> None:
     if not args.output:
         args.output = ask_input("Ruta de salida", "resultado.xlsx")
 
-    print("\n[INFO] Configuraci贸n final:")
+    print("\n[INFO] Configuracion final:")
     print(f"Modo: {args.mode}")
     print(f"Audios: {args.audio_folder}")
     print(f"Output: {args.output}")
     print()
 
-    # 馃敟 EJECUCI脫N
-    transcriber = WhisperTranscriber(model_size=args.model_size)
+    # Ejecución
     language = args.language if args.language else None
+
+    if args.engine == "deepgram":
+        deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
+        transcriber = DeepgramTranscriber(api_key=deepgram_api_key, model=args.deepgram_model)
+    else:
+        transcriber = WhisperTranscriber(model_size=args.model_size)
 
     transcripts = transcribe_folder(
         transcriber=transcriber,
@@ -473,7 +534,7 @@ def main() -> None:
             output_path=args.output
         )
 
-        print("\n=== Resumen (solo transcripci贸n) ===")
+        print("\n=== Resumen (solo transcripcion) ===")
         print(f"Audios procesados: {len(rows)}")
         print(f"Salida: {args.output}")
 
@@ -482,7 +543,7 @@ def main() -> None:
 
         return
 
-    # 馃憞 modo compare
+    # Modo compare
     results = compare_with_excel(
         excel_path=args.excel,
         transcripts=transcripts,
