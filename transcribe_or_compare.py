@@ -12,6 +12,7 @@ from pydub import AudioSegment
 from pydub.silence import split_on_silence
 from collections import Counter
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import torch
 from openpyxl import load_workbook
@@ -36,15 +37,17 @@ class BaseTranscriber:
 class DeepgramTranscriber(BaseTranscriber):
     """Implementación usando Deepgram API (nova-3)."""
 
-    def __init__(self, api_key: str, model: str = "nova-3"):
+    def __init__(self, api_key: str, model: str = "nova-3", max_workers: int = 4):
         if not api_key:
             raise ValueError("Deepgram API key no configurada. Define DEEPGRAM_API_KEY.")
 
         self.api_key = api_key
         self.model = model
+        self.max_workers = max(1, int(max_workers))
 
         print("[INFO] Inicializando Deepgram...")
         print(f"[INFO] Modelo Deepgram: {model}")
+        print(f"[INFO] Workers Deepgram: {self.max_workers}")
 
         self.client = DeepgramClient(api_key)
 
@@ -221,6 +224,36 @@ def transcribe_folder(
         return {}
 
     transcripts: Dict[str, str] = {}
+
+    # Deepgram: procesamiento concurrente para evitar espera secuencial archivo por archivo.
+    if isinstance(transcriber, DeepgramTranscriber):
+        max_workers = min(transcriber.max_workers, len(files))
+        print(f"[INFO] Procesando {len(files)} audios con Deepgram en paralelo (workers={max_workers})")
+
+        def _worker(audio_path: str) -> tuple[str, str]:
+            relative_path = os.path.relpath(audio_path, folder_path)
+            text = transcriber.transcribe(audio_path, language=language)
+            return relative_path, text
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {executor.submit(_worker, audio_path): audio_path for audio_path in files}
+            done = 0
+            total = len(files)
+            for future in as_completed(future_map):
+                audio_path = future_map[future]
+                relative_path = os.path.relpath(audio_path, folder_path)
+                done += 1
+                try:
+                    rel, text = future.result()
+                    transcripts[rel] = text
+                    print(f"[{done}/{total}] OK: {rel}")
+                except Exception as exc:
+                    print(f"[{done}/{total}] [ERROR] Fallo {relative_path}: {exc}")
+                    transcripts[relative_path] = ""
+
+        return dict(sorted(transcripts.items()))
+
+    # Whisper (u otros): secuencial para evitar problemas de memoria/contención de GPU.
     for idx, audio_path in enumerate(files, start=1):
         relative_path = os.path.relpath(audio_path, folder_path)
         print(f"[{idx}/{len(files)}] Transcribiendo: {relative_path}")
@@ -518,7 +551,12 @@ def main() -> None:
 
     if args.engine == "deepgram":
         deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
-        transcriber = DeepgramTranscriber(api_key=deepgram_api_key, model=args.deepgram_model)
+        deepgram_workers = int(os.getenv("DEEPGRAM_MAX_WORKERS", "4"))
+        transcriber = DeepgramTranscriber(
+            api_key=deepgram_api_key,
+            model=args.deepgram_model,
+            max_workers=deepgram_workers,
+        )
     else:
         transcriber = WhisperTranscriber(model_size=args.model_size)
 

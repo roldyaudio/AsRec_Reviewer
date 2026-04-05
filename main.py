@@ -216,7 +216,12 @@ class MainWindow(QMainWindow):
                 if not ok or not deepgram_api_key:
                     QMessageBox.warning(self, "Error", "Debes ingresar una DEEPGRAM_API_KEY válida")
                     return
-                transcriber = core.DeepgramTranscriber(api_key=deepgram_api_key, model=model)
+                deepgram_workers = int(os.getenv("DEEPGRAM_MAX_WORKERS", "4"))
+                transcriber = core.DeepgramTranscriber(
+                    api_key=deepgram_api_key,
+                    model=model,
+                    max_workers=deepgram_workers,
+                )
             else:
                 raise ValueError(f"Motor no soportado: {engine}")
 
