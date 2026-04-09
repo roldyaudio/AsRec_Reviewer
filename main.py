@@ -40,6 +40,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self._deepgram_api_key = None
 
         self.setWindowTitle("As-Recorded Reviewer")
         self.resize(600, 320)
@@ -206,19 +207,21 @@ class MainWindow(QMainWindow):
             if engine == "whisper":
                 transcriber = core.WhisperTranscriber(model_size=model)
             elif engine == "deepgram":
-                deepgram_api_key, ok = QInputDialog.getText(
-                    self,
-                    "Deepgram API Key",
-                    "Pega tu DEEPGRAM_API_KEY:",
-                    QLineEdit.Password,
-                )
-                deepgram_api_key = deepgram_api_key.strip()
-                if not ok or not deepgram_api_key:
-                    QMessageBox.warning(self, "Error", "Debes ingresar una DEEPGRAM_API_KEY válida")
-                    return
+                if not self._deepgram_api_key:
+                    deepgram_api_key, ok = QInputDialog.getText(
+                        self,
+                        "Deepgram API Key",
+                        "Pega tu DEEPGRAM_API_KEY:",
+                        QLineEdit.Password,
+                    )
+                    deepgram_api_key = deepgram_api_key.strip()
+                    if not ok or not deepgram_api_key:
+                        QMessageBox.warning(self, "Error", "Debes ingresar una DEEPGRAM_API_KEY válida")
+                        return
+                    self._deepgram_api_key = deepgram_api_key
                 deepgram_workers = int(os.getenv("DEEPGRAM_MAX_WORKERS", "4"))
                 transcriber = core.DeepgramTranscriber(
-                    api_key=deepgram_api_key,
+                    api_key=self._deepgram_api_key,
                     model=model,
                     max_workers=deepgram_workers,
                 )
@@ -246,6 +249,9 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "OK", "Proceso completado exitosamente")
 
         except Exception as e:
+            error_text = str(e)
+            if self.combo_engine.currentData() == "deepgram" and ("401" in error_text or "unauthorized" in error_text.lower()):
+                self._deepgram_api_key = None
             QMessageBox.critical(self, "Error", f"Ocurrió un error: {str(e)}")
 
 
