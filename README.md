@@ -10,6 +10,7 @@ Herramienta de **Speech-to-Text (STT)** con interfaz gráfica (PySide6) para:
 - ✅ **Motor seleccionable**:
   - **Whisper local** (CPU/GPU).
   - **Deepgram API** (modelo `nova-3`).
+- ✅ **Campo de Glosario en UI** para Deepgram con carga de `keyterms` + `variants` desde Excel.
 - ✅ **Paralelismo con workers** para Deepgram usando `ThreadPoolExecutor`.
 - ✅ **Ingreso de API Key de Deepgram** desde la UI (prompt seguro tipo password).
 - ✅ Soporte de modelo Whisper `large-v3`.
@@ -56,6 +57,7 @@ La aplicación abre una interfaz con los campos:
 - **Idioma**
 - **Carpeta de audios**
 - **Excel (Script)** (solo en Compare)
+- **Glosario** (habilitado cuando `Motor = Deepgram`, tanto en Compare como en Transcribe-Only)
 - **Output**
 
 ---
@@ -85,6 +87,11 @@ Modelo disponible:
 Comportamiento:
 - Solicita la **DEEPGRAM_API_KEY** al presionar **Run**.
 - Procesa audios en paralelo con workers.
+- Si se carga un glosario, envía `keyterms` a Deepgram (Nova-3).
+- Muestra en consola el conteo de keyterms reales y nivel recomendado:
+  - 🟢 ideal: 10–50
+  - 🟡 ok: 50–120
+  - 🔴 riesgo: 120+
 
 Configuración de concurrencia:
 
@@ -107,6 +114,7 @@ Cuando el motor seleccionado es **Deepgram**, la app muestra un cuadro para pega
 
 - No se ejecuta si la key está vacía.
 - Puedes gestionar la concurrencia por variable `DEEPGRAM_MAX_WORKERS`.
+- Puedes cargar un glosario opcional en formato Excel para priorizar términos.
 
 > Recomendación: evita hardcodear keys en código o repositorio.
 
@@ -126,6 +134,60 @@ Colores en `coincide`:
 - 🟩 `True`
 - 🟥 `False`
 - 🟨 `None`
+
+---
+
+## Glosario Deepgram (Excel)
+
+El campo **Glosario** en la GUI se usa para cargar un Excel con términos priorizados para Deepgram.
+
+### Cuándo se habilita el campo Glosario
+
+- ✅ Habilitado solo cuando:
+  - `Motor = Deepgram`
+- ❌ Deshabilitado (oscurecido) en:
+  - cualquier modo con `Motor = Whisper`
+
+### Columnas obligatorias del Excel de glosario
+
+Debes usar exactamente estas columnas:
+
+| term | boost | variants | enabled | notes |
+|---|---:|---|---|---|
+| Jedi | 1.2 | yedai,yedi | TRUE | |
+| Hola | 0 | | FALSE | |
+| Tatooine | 1.5 | tatooin,tatuin | TRUE | |
+| Ubisoft | 1.2 | yubisoft | TRUE | |
+
+### Reglas de carga
+
+- Solo se incluyen filas donde `enabled` sea verdadero (`TRUE`, `true`, `1`, `yes`, `sí`, etc.).
+- `term` vacío no se incluye.
+- `variants` acepta variantes separadas por coma.
+- `boost` se conserva como columna de plantilla, pero **Nova-3 no usa boost** (Deepgram requiere `keyterm`).
+
+### Resultado esperado que se envía a Deepgram (Nova-3)
+
+Ejemplo (según las filas habilitadas):
+
+```text
+[
+  "Jedi",
+  "yedai",
+  "yedi",
+  "Tatooine",
+  "tatooin",
+  "tatuin"
+]
+```
+
+> Si no cargas glosario, o si no hay filas habilitadas, Deepgram se ejecuta sin keyterms adicionales.
+
+### Uso por línea de comandos (opcional)
+
+```bash
+python transcribe_or_compare.py --engine deepgram --glossary ruta/al/glosario.xlsx
+```
 
 ---
 
@@ -151,4 +213,3 @@ Búsqueda recursiva en la carpeta seleccionada:
 - `main.py`: UI y orquestación principal.
 - `transcribe_or_compare.py`: motores STT, transcripción y comparación Excel.
 - `lib_installer.py`: utilidades para instalación/verificación de entorno.
-
