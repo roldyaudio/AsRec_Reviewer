@@ -10,7 +10,7 @@ Herramienta de **Speech-to-Text (STT)** con interfaz gráfica (PySide6) para:
 - ✅ **Motor seleccionable**:
   - **Whisper local** (CPU/GPU).
   - **Deepgram API** (modelo `nova-3`).
-- ✅ **Campo de Glosario en UI** para Deepgram con carga de `keywords` + `variants` desde Excel.
+- ✅ **Campo de Glosario en UI** para Deepgram con carga de `keyterms` + `variants` desde Excel.
 - ✅ **Paralelismo con workers** para Deepgram usando `ThreadPoolExecutor`.
 - ✅ **Ingreso de API Key de Deepgram** desde la UI (prompt seguro tipo password).
 - ✅ Soporte de modelo Whisper `large-v3`.
@@ -87,8 +87,8 @@ Modelo disponible:
 Comportamiento:
 - Solicita la **DEEPGRAM_API_KEY** al presionar **Run**.
 - Procesa audios en paralelo con workers.
-- Si se carga un glosario, envía `keywords` a Deepgram en formato `termino:boost`.
-- Muestra en consola el conteo de keywords reales y nivel recomendado:
+- Si se carga un glosario, envía `keyterms` a Deepgram (Nova-3).
+- Muestra en consola el conteo de keyterms reales y nivel recomendado:
   - 🟢 ideal: 10–50
   - 🟡 ok: 50–120
   - 🔴 riesgo: 120+
@@ -164,24 +164,24 @@ Debes usar exactamente estas columnas:
 - Solo se incluyen filas donde `enabled` sea verdadero (`TRUE`, `true`, `1`, `yes`, `sí`, etc.).
 - `term` vacío no se incluye.
 - `variants` acepta variantes separadas por coma.
-- `boost` se aplica al `term` y a cada variante de esa fila.
+- `boost` se conserva como columna de plantilla, pero **Nova-3 no usa boost** (Deepgram requiere `keyterm`).
 
-### Resultado esperado que se envía a Deepgram
+### Resultado esperado que se envía a Deepgram (Nova-3)
 
 Ejemplo (según las filas habilitadas):
 
 ```text
 [
-  "Jedi:1.2",
-  "yedai:1.2",
-  "yedi:1.2",
-  "Tatooine:1.5",
-  "tatooin:1.5",
-  "tatuin:1.5"
+  "Jedi",
+  "yedai",
+  "yedi",
+  "Tatooine",
+  "tatooin",
+  "tatuin"
 ]
 ```
 
-> Si no cargas glosario, o si no hay filas habilitadas, Deepgram se ejecuta sin keywords adicionales.
+> Si no cargas glosario, o si no hay filas habilitadas, Deepgram se ejecuta sin keyterms adicionales.
 
 ### Uso por línea de comandos (opcional)
 

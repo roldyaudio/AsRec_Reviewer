@@ -50,12 +50,12 @@ class DeepgramTranscriber(BaseTranscriber):
         self.api_key = api_key
         self.model = model
         self.max_workers = max(1, int(max_workers))
-        self.keywords = self._load_keywords_from_glossary(glossary_path)
+        self.keyterms = self._load_keyterms_from_glossary(glossary_path)
 
         print("[INFO] Inicializando Deepgram...")
         print(f"[INFO] Modelo Deepgram: {model}")
         print(f"[INFO] Workers Deepgram: {self.max_workers}")
-        self._print_keywords_summary()
+        self._print_keyterms_summary()
 
         self.client = DeepgramClient(api_key)
 
@@ -69,18 +69,12 @@ class DeepgramTranscriber(BaseTranscriber):
         return text in {"1", "true", "t", "yes", "y", "si", "sí"}
 
     @staticmethod
-    def _normalize_boost(value) -> float:
-        if pd.isna(value) or str(value).strip() == "":
-            return 0.0
-        return float(value)
-
-    @staticmethod
     def _split_variants(value) -> List[str]:
         if pd.isna(value):
             return []
         return [part.strip() for part in str(value).split(",") if part.strip()]
 
-    def _load_keywords_from_glossary(self, glossary_path: Optional[str]) -> List[str]:
+    def _load_keyterms_from_glossary(self, glossary_path: Optional[str]) -> List[str]:
         if not glossary_path:
             return []
         if not os.path.exists(glossary_path):
@@ -95,7 +89,7 @@ class DeepgramTranscriber(BaseTranscriber):
                 f"Faltantes: {sorted(missing)}"
             )
 
-        keywords: List[str] = []
+        keyterms: List[str] = []
         for _, row in glossary_df.iterrows():
             if not self._is_enabled(row.get("enabled")):
                 continue
@@ -104,29 +98,28 @@ class DeepgramTranscriber(BaseTranscriber):
             if not term:
                 continue
 
-            boost = self._normalize_boost(row.get("boost"))
             tokens = [term, *self._split_variants(row.get("variants"))]
             for token in tokens:
-                keywords.append(f"{token}:{boost}")
+                keyterms.append(token)
 
         # Mantener orden original removiendo duplicados exactos.
-        return list(dict.fromkeys(keywords))
+        return list(dict.fromkeys(keyterms))
 
-    def _print_keywords_summary(self) -> None:
-        total_keywords = len(self.keywords)
-        if total_keywords == 0:
-            print("[INFO] Glosario: sin keywords habilitadas (se enviará Deepgram sin keywords).")
+    def _print_keyterms_summary(self) -> None:
+        total_keyterms = len(self.keyterms)
+        if total_keyterms == 0:
+            print("[INFO] Glosario: sin keyterms habilitados (se enviará Deepgram sin keyterms).")
             return
 
-        if 10 <= total_keywords <= 50:
+        if 10 <= total_keyterms <= 50:
             level = "🟢 ideal"
-        elif 51 <= total_keywords <= 120:
+        elif 51 <= total_keyterms <= 120:
             level = "🟡 ok"
         else:
             level = "🔴 riesgo"
 
-        print(f"[INFO] Keywords Deepgram cargadas: {total_keywords}")
-        print("[INFO] Nivel recomendado de keywords reales:")
+        print(f"[INFO] Keyterms Deepgram cargados: {total_keyterms}")
+        print("[INFO] Nivel recomendado de keyterms reales:")
         print("       🟢 ideal: 10 – 50")
         print("       🟡 ok: 50 – 120")
         print("       🔴 riesgo: 120+")
@@ -141,7 +134,7 @@ class DeepgramTranscriber(BaseTranscriber):
             model=self.model,
             smart_format=True,
             language=language if language else None,
-            keywords=self.keywords if self.keywords else None,
+            keyterm=self.keyterms if self.keyterms else None,
         )
 
         response = self.client.listen.rest.v("1").transcribe_file(payload, options)
