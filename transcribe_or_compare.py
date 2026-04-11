@@ -37,19 +37,100 @@ class BaseTranscriber:
 class DeepgramTranscriber(BaseTranscriber):
     """Implementación usando Deepgram API (nova-3)."""
 
-    def __init__(self, api_key: str, model: str = "nova-3", max_workers: int = 4):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "nova-3",
+        max_workers: int = 4,
+        glossary_path: Optional[str] = None,
+    ):
         if not api_key:
             raise ValueError("Deepgram API key no configurada. Define DEEPGRAM_API_KEY.")
 
         self.api_key = api_key
         self.model = model
         self.max_workers = max(1, int(max_workers))
+        self.keywords = self._load_keywords_from_glossary(glossary_path)
 
         print("[INFO] Inicializando Deepgram...")
         print(f"[INFO] Modelo Deepgram: {model}")
         print(f"[INFO] Workers Deepgram: {self.max_workers}")
+        self._print_keywords_summary()
 
         self.client = DeepgramClient(api_key)
+
+    @staticmethod
+    def _is_enabled(value) -> bool:
+        if pd.isna(value):
+            return False
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        return text in {"1", "true", "t", "yes", "y", "si", "sí"}
+
+    @staticmethod
+    def _normalize_boost(value) -> float:
+        if pd.isna(value) or str(value).strip() == "":
+            return 0.0
+        return float(value)
+
+    @staticmethod
+    def _split_variants(value) -> List[str]:
+        if pd.isna(value):
+            return []
+        return [part.strip() for part in str(value).split(",") if part.strip()]
+
+    def _load_keywords_from_glossary(self, glossary_path: Optional[str]) -> List[str]:
+        if not glossary_path:
+            return []
+        if not os.path.exists(glossary_path):
+            raise FileNotFoundError(f"No existe el glosario: {glossary_path}")
+
+        glossary_df = pd.read_excel(glossary_path)
+        expected_columns = {"term", "boost", "variants", "enabled", "notes"}
+        missing = expected_columns - set(glossary_df.columns)
+        if missing:
+            raise ValueError(
+                f"El glosario debe incluir columnas {sorted(expected_columns)}. "
+                f"Faltantes: {sorted(missing)}"
+            )
+
+        keywords: List[str] = []
+        for _, row in glossary_df.iterrows():
+            if not self._is_enabled(row.get("enabled")):
+                continue
+
+            term = str(row.get("term", "")).strip()
+            if not term:
+                continue
+
+            boost = self._normalize_boost(row.get("boost"))
+            tokens = [term, *self._split_variants(row.get("variants"))]
+            for token in tokens:
+                keywords.append(f"{token}:{boost}")
+
+        # Mantener orden original removiendo duplicados exactos.
+        return list(dict.fromkeys(keywords))
+
+    def _print_keywords_summary(self) -> None:
+        total_keywords = len(self.keywords)
+        if total_keywords == 0:
+            print("[INFO] Glosario: sin keywords habilitadas (se enviará Deepgram sin keywords).")
+            return
+
+        if 10 <= total_keywords <= 50:
+            level = "🟢 ideal"
+        elif 51 <= total_keywords <= 120:
+            level = "🟡 ok"
+        else:
+            level = "🔴 riesgo"
+
+        print(f"[INFO] Keywords Deepgram cargadas: {total_keywords}")
+        print("[INFO] Nivel recomendado de keywords reales:")
+        print("       🟢 ideal: 10 – 50")
+        print("       🟡 ok: 50 – 120")
+        print("       🔴 riesgo: 120+")
+        print(f"[INFO] Nivel actual: {level}")
 
     def transcribe(self, audio_path: str, language: Optional[str] = None) -> str:
         payload: FileSource
@@ -60,6 +141,7 @@ class DeepgramTranscriber(BaseTranscriber):
             model=self.model,
             smart_format=True,
             language=language if language else None,
+            keywords=self.keywords if self.keywords else None,
         )
 
         response = self.client.listen.rest.v("1").transcribe_file(payload, options)
@@ -448,6 +530,11 @@ def parse_args() -> argparse.Namespace:
         default="es",
         help="Idioma forzado (ej. es, en) o vacio para autodetectar",
     )
+    parser.add_argument(
+        "--glossary",
+        default=None,
+        help="Excel de glosario para Deepgram (columnas: term, boost, variants, enabled, notes).",
+    )
 
     return parser.parse_args()
 
@@ -524,6 +611,10 @@ def main() -> None:
                 "Modelo Deepgram",
                 args.deepgram_model
             )
+            args.glossary = ask_input(
+                "Ruta del glosario Deepgram (Enter para omitir)",
+                ""
+            ) or None
 
         args.language = ask_input(
             "Idioma (es/en/... o vacio auto)",
@@ -556,6 +647,7 @@ def main() -> None:
             api_key=deepgram_api_key,
             model=args.deepgram_model,
             max_workers=deepgram_workers,
+            glossary_path=args.glossary,
         )
     else:
         transcriber = WhisperTranscriber(model_size=args.model_size)

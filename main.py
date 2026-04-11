@@ -43,8 +43,8 @@ class MainWindow(QMainWindow):
         self._deepgram_api_key = None
 
         self.setWindowTitle("As-Recorded Reviewer")
-        self.resize(600, 320)
-        self.setFixedHeight(320)
+        self.resize(600, 360)
+        self.setFixedHeight(360)
 
         container = QWidget()
         self.setCentralWidget(container)
@@ -62,8 +62,8 @@ class MainWindow(QMainWindow):
         grid.addWidget(QLabel("Modo:"), 0, 0)
         self.combo_mode = QComboBox()
         self.combo_mode.addItems(["Compare", "Transcribe-Only"])
-        # Conectar cambio de modo para habilitar/deshabilitar Excel
-        self.combo_mode.currentIndexChanged.connect(self.toggle_excel_fields)
+        # Conectar cambio de modo para habilitar/deshabilitar campos dependientes
+        self.combo_mode.currentIndexChanged.connect(self.update_input_states)
         grid.addWidget(self.combo_mode, 0, 1)
 
         # ENGINE
@@ -72,6 +72,7 @@ class MainWindow(QMainWindow):
         self.combo_engine.addItem("Whisper", "whisper")
         self.combo_engine.addItem("Deepgram", "deepgram")
         self.combo_engine.currentIndexChanged.connect(self.update_model_options)
+        self.combo_engine.currentIndexChanged.connect(self.update_input_states)
         grid.addWidget(self.combo_engine, 1, 1)
 
         # MODEL
@@ -116,13 +117,22 @@ class MainWindow(QMainWindow):
         grid.addWidget(self.input_excel, 5, 1)
         grid.addWidget(self.btn_excel, 5, 2)
 
+        # GLOSSARY (solo aplica para Deepgram en modo Compare)
+        self.label_glossary = QLabel("Glosario:")
+        grid.addWidget(self.label_glossary, 6, 0)
+        self.input_glossary = QLineEdit()
+        self.btn_glossary = QPushButton("Browse")
+        self.btn_glossary.clicked.connect(self.select_glossary)
+        grid.addWidget(self.input_glossary, 6, 1)
+        grid.addWidget(self.btn_glossary, 6, 2)
+
         # OUTPUT
-        grid.addWidget(QLabel("Output:"), 6, 0)
+        grid.addWidget(QLabel("Output:"), 7, 0)
         self.input_output = QLineEdit("resultado.xlsx")
         btn_output = QPushButton("Browse")
         btn_output.clicked.connect(self.select_output)
-        grid.addWidget(self.input_output, 6, 1)
-        grid.addWidget(btn_output, 6, 2)
+        grid.addWidget(self.input_output, 7, 1)
+        grid.addWidget(btn_output, 7, 2)
 
         layout_main.addLayout(grid)
 
@@ -134,20 +144,30 @@ class MainWindow(QMainWindow):
         layout_main.addWidget(btn_run)
         layout_main.setAlignment(btn_run, Qt.AlignHCenter)
 
-        center_app(self, 600, 320)
-        self.setFixedSize(600, 320) # Si quieres que no se pueda estirar
+        center_app(self, 600, 360)
+        self.setFixedSize(600, 360) # Si quieres que no se pueda estirar
+        self.update_input_states()
 
     # -------- MÉTODOS DE INTERFAZ --------
 
-    def toggle_excel_fields(self):
-        """Desactiva visualmente los campos de Excel si el modo es Transcribe-Only."""
+    def update_input_states(self):
+        """Actualiza disponibilidad de Script y Glosario según modo/motor."""
         is_compare = self.combo_mode.currentText() == "Compare"
+        is_deepgram = self.combo_engine.currentData() == "deepgram"
+
         self.label_excel.setEnabled(is_compare)
         self.input_excel.setEnabled(is_compare)
         self.btn_excel.setEnabled(is_compare)
-        
+
+        glossary_enabled = is_deepgram
+        self.label_glossary.setEnabled(glossary_enabled)
+        self.input_glossary.setEnabled(glossary_enabled)
+        self.btn_glossary.setEnabled(glossary_enabled)
+
         if not is_compare:
             self.input_excel.clear()
+        if not glossary_enabled:
+            self.input_glossary.clear()
 
     def update_model_options(self):
         """Actualiza los modelos disponibles según el motor seleccionado."""
@@ -176,6 +196,11 @@ class MainWindow(QMainWindow):
         if file:
             self.input_excel.setText(file)
 
+    def select_glossary(self):
+        file, _ = QFileDialog.getOpenFileName(self, "Select Glossary", filter="Excel (*.xlsx)")
+        if file:
+            self.input_glossary.setText(file)
+
     def select_output(self):
         file, _ = QFileDialog.getSaveFileName(self, "Save Output", filter="Excel (*.xlsx)")
         if file:
@@ -188,6 +213,7 @@ class MainWindow(QMainWindow):
             mode = self.combo_mode.currentText()
             audio_folder = self.input_audio.text()
             excel = self.input_excel.text()
+            glossary_path = self.input_glossary.text()
             output = self.input_output.text()
             model = self.combo_model.currentText().lower()
             engine = self.combo_engine.currentData()
@@ -224,6 +250,7 @@ class MainWindow(QMainWindow):
                     api_key=self._deepgram_api_key,
                     model=model,
                     max_workers=deepgram_workers,
+                    glossary_path=glossary_path or None,
                 )
             else:
                 raise ValueError(f"Motor no soportado: {engine}")
