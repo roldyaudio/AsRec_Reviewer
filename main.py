@@ -159,15 +159,14 @@ class MainWindow(QMainWindow):
         self.input_excel.setEnabled(is_compare)
         self.btn_excel.setEnabled(is_compare)
 
-        glossary_enabled = is_compare and is_deepgram
+        glossary_enabled = is_deepgram
         self.label_glossary.setEnabled(glossary_enabled)
         self.input_glossary.setEnabled(glossary_enabled)
         self.btn_glossary.setEnabled(glossary_enabled)
 
         if not is_compare:
             self.input_excel.clear()
-            self.input_glossary.clear()
-        elif not glossary_enabled:
+        if not glossary_enabled:
             self.input_glossary.clear()
 
     def update_model_options(self):

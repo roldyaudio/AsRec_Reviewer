@@ -57,7 +57,7 @@ La aplicación abre una interfaz con los campos:
 - **Idioma**
 - **Carpeta de audios**
 - **Excel (Script)** (solo en Compare)
-- **Glosario** (solo habilitado en `Compare` + `Deepgram`)
+- **Glosario** (habilitado cuando `Motor = Deepgram`, tanto en Compare como en Transcribe-Only)
 - **Output**
 
 ---
@@ -144,11 +144,9 @@ El campo **Glosario** en la GUI se usa para cargar un Excel con términos priori
 ### Cuándo se habilita el campo Glosario
 
 - ✅ Habilitado solo cuando:
-  - `Modo = Compare`
   - `Motor = Deepgram`
 - ❌ Deshabilitado (oscurecido) en:
-  - `Transcribe-Only`
-  - cualquier selección con `Motor = Whisper`
+  - cualquier modo con `Motor = Whisper`
 
 ### Columnas obligatorias del Excel de glosario
 
