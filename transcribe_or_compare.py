@@ -6,12 +6,9 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 
 from deepgram import DeepgramClient, FileSource, PrerecordedOptions
-from pydub import AudioSegment
-from pydub.silence import split_on_silence
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
-import torch
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
@@ -166,6 +163,7 @@ class WhisperTranscriber(BaseTranscriber):
     """Implementacion con OpenAI Whisper local."""
 
     def __init__(self, model_size: str = "medium"):
+        import torch
         import whisper
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -178,6 +176,9 @@ class WhisperTranscriber(BaseTranscriber):
         self.model = whisper.load_model(model_size, device=self.device)
 
     def transcribe(self, audio_path: str, language: Optional[str] = None) -> str:
+        from pydub import AudioSegment
+        from pydub.silence import split_on_silence
+
         kwargs = {"fp16": self.device == "cuda"}
         if language:
             kwargs["language"] = language
@@ -540,8 +541,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--engine",
         choices=["whisper", "deepgram"],
-        default="whisper",
-        help="Motor de transcripción: whisper o deepgram",
+        default="deepgram",
+        help="Motor de transcripción: deepgram o whisper",
     )
     parser.add_argument(
         "--model-size",

@@ -3,6 +3,7 @@ import subprocess
 import sys
 import importlib.metadata
 import importlib.util
+from typing import Iterable, Optional, Set
 
 def ensure_pip():
     """Ensures pip is available by checking the module via subprocess."""
@@ -91,8 +92,25 @@ def is_installed(req_string):
         print(f"❌ Error parsing {req_string}: {e}")
         return False, None
 
-def install_requirements_in_directory(base_dir):
+def _requirement_name(req_string: str) -> str:
+    try:
+        from packaging.requirements import Requirement
+    except ImportError:
+        return req_string.split("==", 1)[0].split(">=", 1)[0].split("<=", 1)[0].strip().lower()
+
+    return Requirement(req_string).name.lower()
+
+
+def install_requirements_in_directory(
+    base_dir,
+    skip_packages: Optional[Iterable[str]] = None,
+    only_packages: Optional[Iterable[str]] = None,
+):
     """Walk through folders to find requirements.txt and manage installations."""
+    skip_packages_set: Set[str] = {pkg.lower() for pkg in (skip_packages or [])}
+    only_packages_set: Optional[Set[str]] = (
+        {pkg.lower() for pkg in only_packages} if only_packages is not None else None
+    )
     found_any = False
     for root, _, files in os.walk(base_dir):
         for file in files:
@@ -110,6 +128,13 @@ def install_requirements_in_directory(base_dir):
                     continue
 
                 for req in requirements:
+                    package_name = _requirement_name(req)
+                    if package_name in skip_packages_set:
+                        print(f"⏭️ Skipping optional local dependency: {req}")
+                        continue
+                    if only_packages_set is not None and package_name not in only_packages_set:
+                        continue
+
                     installed, current_v = is_installed(req)
                     if installed:
                         print(f"✅ {req} is satisfied.")
@@ -129,19 +154,32 @@ if __name__ == "__main__":
     print("🔧 Preparing environment...")
     ensure_pip()
 
-    # 1. Forzar la instalación de PyTorch con soporte CUDA primero
-    install_pytorch_cuda_forced()
+    target_dir = os.path.dirname(os.path.abspath(__file__))
+    local_stt_dependencies = {"openai-whisper", "pydub", "torch", "torchvision", "torchaudio"}
+    install_whisper_local = os.getenv("INSTALL_WHISPER_LOCAL", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "y",
+        "si",
+        "sí",
+    }
 
-    # 2. Procesar el resto de dependencias
-    TARGET_DIR = r"C:/Apps/AsRec_Reviewer"
+    if os.path.exists(target_dir):
+        print(f"🚀 Scanning directory: {target_dir}")
+        if install_whisper_local:
+            install_pytorch_cuda_forced()
 
-    if os.path.exists(TARGET_DIR):
-        print(f"🚀 Scanning directory: {TARGET_DIR}")
-        install_requirements_in_directory(TARGET_DIR)
+        install_requirements_in_directory(
+            target_dir,
+            skip_packages=None if install_whisper_local else local_stt_dependencies,
+        )
 
-        if not check_ffmpeg_installed():
-            print("\n⚠️ FFmpeg NOT found! Please install it for audio processing.")
+        if install_whisper_local and not check_ffmpeg_installed():
+            print("\n⚠️ FFmpeg NOT found! Please install it for local Whisper audio processing.")
+        elif not install_whisper_local:
+            print("ℹ️ Local Whisper dependencies skipped. Set INSTALL_WHISPER_LOCAL=1 to install them.")
 
         print("\n✨ Setup completed successfully.")
     else:
-        print(f"❌ Error: The directory '{TARGET_DIR}' was not found.")
+        print(f"❌ Error: The directory '{target_dir}' was not found.")

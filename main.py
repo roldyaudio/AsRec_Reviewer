@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from lib_installer import (
     ensure_pip,
@@ -6,9 +7,11 @@ from lib_installer import (
     install_requirements_in_directory,
 )
 
+APP_DIR = Path(__file__).resolve().parent
+LOCAL_STT_DEPENDENCIES = {"openai-whisper", "pydub", "torch", "torchvision", "torchaudio"}
+
 ensure_pip()
-install_pytorch_cuda_forced()
-install_requirements_in_directory("C:/Apps/AsRec_Reviewer")
+install_requirements_in_directory(APP_DIR, skip_packages=LOCAL_STT_DEPENDENCIES)
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QLabel, QMessageBox, QPushButton, QWidget,
@@ -69,8 +72,8 @@ class MainWindow(QMainWindow):
         # ENGINE
         grid.addWidget(QLabel("Motor:"), 1, 0)
         self.combo_engine = QComboBox()
-        self.combo_engine.addItem("Whisper", "whisper")
         self.combo_engine.addItem("Deepgram", "deepgram")
+        self.combo_engine.addItem("Whisper", "whisper")
         self.combo_engine.currentIndexChanged.connect(self.update_model_options)
         self.combo_engine.currentIndexChanged.connect(self.update_input_states)
         grid.addWidget(self.combo_engine, 1, 1)
@@ -234,6 +237,11 @@ class MainWindow(QMainWindow):
 
             # Ejecución del Core
             if engine == "whisper":
+                install_pytorch_cuda_forced()
+                install_requirements_in_directory(
+                    APP_DIR,
+                    only_packages=LOCAL_STT_DEPENDENCIES,
+                )
                 transcriber = core.WhisperTranscriber(model_size=model)
             elif engine == "deepgram":
                 if not self._deepgram_api_key:
