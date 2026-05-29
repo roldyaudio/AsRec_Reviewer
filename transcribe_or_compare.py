@@ -1,20 +1,14 @@
 import argparse
 import os
 import sys
-import re
-import unicodedata
-from rapidfuzz import fuzz
+import jiwer
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 
 from deepgram import DeepgramClient, FileSource, PrerecordedOptions
-from pydub import AudioSegment
-from pydub.silence import split_on_silence
-from collections import Counter
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
-import torch
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
@@ -23,6 +17,30 @@ from openpyxl.styles import PatternFill
 GREEN_FILL = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
 RED_FILL = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
 YELLOW_FILL = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+
+# STT quality thresholds. Lower error rates are better.
+WER_EXCELLENT_THRESHOLD = 0.05
+WER_ACCEPTABLE_THRESHOLD = 0.15
+CER_EXCELLENT_THRESHOLD = 0.02
+CER_ACCEPTABLE_THRESHOLD = 0.08
+
+ASIAN_LANGUAGES = {"JP", "JA", "KO", "KR", "TH", "CN", "ZH", "ZH-CN", "ZH-TW"}
+QUALITY_EXCELLENT = "excellent"
+QUALITY_ACCEPTABLE = "acceptable"
+QUALITY_POOR = "poor"
+QUALITY_UNEVALUATED = "not_evaluated"
+
+wer_transforms = jiwer.Compose([
+    jiwer.ToLowerCase(),
+    jiwer.RemovePunctuation(),
+    jiwer.SubstituteRegexes({r"[^\w\s]": ""}),
+    jiwer.RemoveMultipleSpaces(),
+    jiwer.Strip(),
+])
+
+cer_transforms = jiwer.Compose([
+    jiwer.Strip(),
+])
 
 
 class BaseTranscriber:
@@ -145,6 +163,7 @@ class WhisperTranscriber(BaseTranscriber):
     """Implementacion con OpenAI Whisper local."""
 
     def __init__(self, model_size: str = "medium"):
+        import torch
         import whisper
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -157,6 +176,9 @@ class WhisperTranscriber(BaseTranscriber):
         self.model = whisper.load_model(model_size, device=self.device)
 
     def transcribe(self, audio_path: str, language: Optional[str] = None) -> str:
+        from pydub import AudioSegment
+        from pydub.silence import split_on_silence
+
         kwargs = {"fp16": self.device == "cuda"}
         if language:
             kwargs["language"] = language
@@ -229,7 +251,9 @@ class ComparisonResult:
     audio_file: str
     transcript: str
     expected_text: str
-    match: Optional[bool]  # True/False/None(no evaluable)
+    wer: Optional[float]
+    cer: Optional[float]
+    quality: str
 
 
 @dataclass
@@ -251,42 +275,74 @@ def get_audio_files(folder_path: str, extensions: Iterable[str] = (".wav", ".mp3
     return audio_files
 
 
-def normalize_text(text: str) -> str:
-    """
-    Normaliza para comparacion robusta:
-    - minusculas
-    - elimina tildes
-    - quita puntuacion
-    - compacta espacios
-    """
-    text = text or ""
-    text = text.lower().strip()
-    text = "".join(
-        c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn"
-    )
-    text = re.sub(r"[^\w\s]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+def normalize_text(text: str, transforms=wer_transforms) -> str:
+    """Normalize text with a reusable jiwer transform pipeline."""
+    return transforms(text or "")
 
 
-def fuzzy_match(expected: str, transcript: str, threshold: int = 95) -> Optional[bool]:
-    exp_norm = normalize_text(expected)
-    tr_norm = normalize_text(transcript)
+def is_asian_language(lang: str) -> bool:
+    """Return True for languages where space-tokenized WER is not meaningful."""
+    if not isinstance(lang, str):
+        return False
+    return lang.strip().upper() in ASIAN_LANGUAGES
 
-    if not exp_norm or not tr_norm:
+
+def calculate_wer(expected: str, transcript: str, language: Optional[str] = None) -> Optional[float]:
+    """Calculate normalized WER, skipping languages without space-separated words."""
+    if is_asian_language(language):
         return None
 
-    ratio = fuzz.token_sort_ratio(exp_norm, tr_norm)
+    expected_norm = normalize_text(expected, wer_transforms)
+    transcript_norm = normalize_text(transcript, wer_transforms)
+    if not expected_norm or not transcript_norm:
+        return None
 
-    if ratio >= threshold:
-        if has_word_difference(exp_norm, tr_norm):
-            return None  # 🟡 palabras distintas aunque sea similar
-        return True     # 🟢 match real
+    return jiwer.wer(expected_norm, transcript_norm)
 
-    return False        # 🔴 no cumple threshold
 
-def has_word_difference(a: str, b: str) -> bool:
-    return Counter(a.split()) != Counter(b.split())
+def calculate_cer(expected: str, transcript: str) -> Optional[float]:
+    """Calculate minimally normalized CER."""
+    expected_norm = normalize_text(expected, cer_transforms)
+    transcript_norm = normalize_text(transcript, cer_transforms)
+    if not expected_norm or not transcript_norm:
+        return None
+
+    return jiwer.cer(expected_norm, transcript_norm)
+
+
+def classify_transcription_quality(wer_score: Optional[float], cer_score: Optional[float]) -> str:
+    """Classify STT quality using centralized thresholds."""
+    if wer_score is not None:
+        if wer_score <= WER_EXCELLENT_THRESHOLD:
+            return QUALITY_EXCELLENT
+        if wer_score <= WER_ACCEPTABLE_THRESHOLD:
+            return QUALITY_ACCEPTABLE
+        return QUALITY_POOR
+
+    if cer_score is not None:
+        if cer_score <= CER_EXCELLENT_THRESHOLD:
+            return QUALITY_EXCELLENT
+        if cer_score <= CER_ACCEPTABLE_THRESHOLD:
+            return QUALITY_ACCEPTABLE
+        return QUALITY_POOR
+
+    return QUALITY_UNEVALUATED
+
+
+def format_score(score: Optional[float]) -> Optional[float]:
+    """Return an Excel-friendly percentage value rounded to two decimals."""
+    if score is None:
+        return None
+    return round(score * 100, 2)
+
+
+def quality_fill(quality: str) -> PatternFill:
+    if quality == QUALITY_EXCELLENT:
+        return GREEN_FILL
+    if quality == QUALITY_POOR:
+        return RED_FILL
+    return YELLOW_FILL
+
 
 def transcribe_folder(
     transcriber: BaseTranscriber,
@@ -341,27 +397,6 @@ def transcribe_folder(
     return transcripts
 
 
-def highlight_differences(expected: str, transcript: str) -> str:
-    """
-    Genera una version del texto donde las diferencias se marcan con ~rojo~ (simbolizado con caracteres especiales).
-    Excel no soporta estilos parciales facilmente, asi que usamos celdas completas coloreadas,
-    pero podemos marcar diferencias con algun prefijo/sufijo si queremos mas detalle.
-    """
-    exp_words = expected.split()
-    tr_words = transcript.split()
-    highlighted = []
-
-    for w in tr_words:
-        # buscamos si la palabra existe en expected con tolerancia
-        match_found = any(fuzz.ratio(w, ew) > 85 for ew in exp_words)
-
-        if match_found:
-            highlighted.append(w)
-        else:
-            highlighted.append(f"*{w.upper()}*")
-    return " ".join(highlighted)
-    
-
 def export_transcriptions_to_excel(
     transcripts: Dict[str, str],
     output_path: str,
@@ -399,6 +434,7 @@ def compare_with_excel(
     expected_column: str,
     output_path: str,
     sheet_name: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> List[ComparisonResult]:
     # Si el usuario pasa una carpeta en lugar de archivo, agregamos un nombre por defecto
     if os.path.isdir(output_path):
@@ -422,53 +458,53 @@ def compare_with_excel(
 
     results: List[ComparisonResult] = []
     transcript_list: List[str] = []
-    match_list: List[Optional[bool]] = []
+    wer_list: List[Optional[float]] = []
+    cer_list: List[Optional[float]] = []
+    quality_list: List[str] = []
 
     for _, row in df.iterrows():
         audio_name = str(row[audio_column]).strip()
         expected_text = str(row[expected_column]) if pd.notna(row[expected_column]) else ""
 
         transcript = transcripts.get(audio_name, "")
-        match = fuzzy_match(expected_text, transcript)
+        wer_score = calculate_wer(expected_text, transcript, language=language)
+        cer_score = calculate_cer(expected_text, transcript)
+        quality = classify_transcription_quality(wer_score, cer_score)
 
         results.append(
             ComparisonResult(
                 audio_file=audio_name,
                 transcript=transcript,
                 expected_text=expected_text,
-                match=match,
+                wer=wer_score,
+                cer=cer_score,
+                quality=quality,
             )
         )
         transcript_list.append(transcript)
-        match_list.append(match)
+        wer_list.append(format_score(wer_score))
+        cer_list.append(format_score(cer_score))
+        quality_list.append(quality)
 
     df["transcripcion"] = transcript_list
-    df["coincide"] = match_list
+    df["wer_pct"] = wer_list
+    df["cer_pct"] = cer_list
+    df["quality"] = quality_list
     df.to_excel(output_path, index=False)
 
     # Pintar en colores usando openpyxl
     wb = load_workbook(output_path)
     ws = wb[sheet_name] if sheet_name else wb.active
 
-    expected_col_idx = list(df.columns).index(expected_column) + 1
-    transcript_col_idx = list(df.columns).index("transcripcion") + 1
-    match_col_idx = list(df.columns).index("coincide") + 1
+    wer_col_idx = list(df.columns).index("wer_pct") + 1
+    cer_col_idx = list(df.columns).index("cer_pct") + 1
+    quality_col_idx = list(df.columns).index("quality") + 1
 
-    for row_idx, value in enumerate(match_list, start=2):
-        expected_cell = ws.cell(row=row_idx, column=expected_col_idx)
-        transcript_cell = ws.cell(row=row_idx, column=transcript_col_idx)
-        match_cell = ws.cell(row=row_idx, column=match_col_idx)
+    for row_idx, quality in enumerate(quality_list, start=2):
+        fill = quality_fill(quality)
 
-        if value is True:
-            match_cell.fill = GREEN_FILL
-
-        elif value is False:
-            # Solo modificas el texto si quieres marcar diferencias
-            transcript_cell.value = highlight_differences(expected_cell.value, transcript_cell.value)
-            match_cell.fill = RED_FILL
-
-        else:
-            match_cell.fill = YELLOW_FILL
+        for col_idx in (wer_col_idx, cer_col_idx, quality_col_idx):
+            ws.cell(row=row_idx, column=col_idx).fill = fill
     wb.save(output_path)
     return results
 
@@ -505,8 +541,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--engine",
         choices=["whisper", "deepgram"],
-        default="whisper",
-        help="Motor de transcripción: whisper o deepgram",
+        default="deepgram",
+        help="Motor de transcripción: deepgram o whisper",
     )
     parser.add_argument(
         "--model-size",
@@ -674,18 +710,21 @@ def main() -> None:
         expected_column=args.expected_column,
         output_path=args.output,
         sheet_name=args.sheet,
+        language=language,
     )
 
     total = len(results)
-    ok = sum(1 for x in results if x.match is True)
-    bad = sum(1 for x in results if x.match is False)
-    unk = sum(1 for x in results if x.match is None)
+    excellent = sum(1 for x in results if x.quality == QUALITY_EXCELLENT)
+    acceptable = sum(1 for x in results if x.quality == QUALITY_ACCEPTABLE)
+    poor = sum(1 for x in results if x.quality == QUALITY_POOR)
+    unevaluated = sum(1 for x in results if x.quality == QUALITY_UNEVALUATED)
 
     print("\n=== Resumen ===")
     print(f"Total filas: {total}")
-    print(f"Coinciden (verde): {ok}")
-    print(f"No coinciden (rojo): {bad}")
-    print(f"Sin evaluar (amarillo): {unk}")
+    print(f"Excelente (verde): {excellent}")
+    print(f"Aceptable (amarillo): {acceptable}")
+    print(f"Pobre (rojo): {poor}")
+    print(f"Sin evaluar (amarillo): {unevaluated}")
     print(f"Salida: {args.output}")
 
     if interactive_mode:

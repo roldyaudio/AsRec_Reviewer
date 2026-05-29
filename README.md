@@ -15,14 +15,14 @@ Herramienta de **Speech-to-Text (STT)** con interfaz gráfica (PySide6) para:
 - ✅ **Ingreso de API Key de Deepgram** desde la UI (prompt seguro tipo password).
 - ✅ Soporte de modelo Whisper `large-v3`.
 - ✅ Detección recursiva de audio (`.wav`, `.mp3`, `.m4a`).
-- ✅ Resaltado visual de resultados en Excel (`coincide`: verde/rojo/amarillo).
+- ✅ Métricas reales de calidad STT en Excel (`wer_pct`, `cer_pct`, `quality`) con resaltado verde/amarillo/rojo.
 
 ---
 
 ## Requisitos
 
 - Python 3.10+
-- FFmpeg en `PATH` (requerido por `pydub`)
+- FFmpeg en `PATH` solo si usarás **Whisper local** (`pydub` lo requiere).
 
 Instalación rápida:
 
@@ -30,17 +30,37 @@ Instalación rápida:
 pip install -r requirements.txt
 ```
 
-Dependencias principales:
+Dependencias principales para el flujo por defecto (**Deepgram**):
 - `PySide6`
-- `openai-whisper`
-- `torch`
 - `deepgram-sdk`
 - `pandas`
 - `openpyxl`
-- `rapidfuzz`
+- `jiwer`
+
+Dependencias locales opcionales para **Whisper**:
+- `openai-whisper`
+- `torch`
 - `pydub`
 
-> Nota: Whisper usa CUDA automáticamente si `torch.cuda.is_available()` es verdadero.
+> Nota: la GUI arranca con **Deepgram** como motor por defecto y el instalador automático omite las dependencias locales de Whisper hasta que selecciones ese motor, para evitar instalar PyTorch/CUDA en equipos que no lo necesitan. Whisper usa CUDA automáticamente si `torch.cuda.is_available()` es verdadero.
+
+### Instalador automático de la GUI
+
+Al ejecutar `python main.py`, la app usa `lib_installer.py` sobre la carpeta real del proyecto (`main.py`), no sobre una ruta fija como `C:/Apps/AsRec_Reviewer`. Por eso los mensajes del instalador reflejan el `requirements.txt` actualizado de esta copia del repo: debe revisar `jiwer` y ya no debe reportar `RapidFuzz` si ese paquete no está en el archivo actual.
+
+Por defecto, el instalador omite dependencias locales pesadas de Whisper (`openai-whisper`, `pydub`, `torch`, `torchvision`, `torchaudio`) para evitar instalaciones innecesarias cuando se trabaja con Deepgram. Si quieres preparar Whisper manualmente desde el instalador, define:
+
+```bash
+export INSTALL_WHISPER_LOCAL=1
+python lib_installer.py
+```
+
+En Windows PowerShell:
+
+```powershell
+$env:INSTALL_WHISPER_LOCAL = "1"
+python lib_installer.py
+```
 
 ---
 
@@ -52,7 +72,7 @@ python main.py
 
 La aplicación abre una interfaz con los campos:
 - **Modo**: `Compare` o `Transcribe-Only`
-- **Motor**: `Whisper` o `Deepgram`
+- **Motor**: `Deepgram` por defecto, o `Whisper` si necesitas transcripción local
 - **Modelo**: según motor
 - **Idioma**
 - **Carpeta de audios**
@@ -70,7 +90,7 @@ Modelos disponibles en la UI:
 - `Tiny`
 - `Base`
 - `Small`
-- `Medium` (default)
+- `Medium` (default de Whisper cuando se selecciona ese motor)
 - `Large`
 - `Large-v3`
 
@@ -128,12 +148,32 @@ Actualmente el flujo de comparación usa estas columnas:
 
 Salida:
 - `transcripcion`
-- `coincide` (`True`, `False`, `None`)
+- `wer_pct` → Word Error Rate en porcentaje.
+- `cer_pct` → Character Error Rate en porcentaje.
+- `quality` → clasificación de calidad (`excellent`, `acceptable`, `poor`, `not_evaluated`).
 
-Colores en `coincide`:
-- 🟩 `True`
-- 🟥 `False`
-- 🟨 `None`
+Normalización de WER:
+- convierte a minúsculas;
+- elimina puntuación;
+- limpia símbolos/puntuación unicode no alfanuméricos;
+- compacta espacios repetidos;
+- recorta espacios al inicio/final.
+
+Normalización de CER:
+- recorta espacios al inicio/final.
+
+Idiomas sin separación por espacios:
+- Para japonés, chino, coreano y tailandés, el sistema omite WER porque no es una métrica significativa en esos idiomas.
+- En esos casos `wer_pct` queda vacío y se calcula `cer_pct`.
+
+Colores de calidad:
+- 🟩 `excellent` = transcripción excelente.
+- 🟨 `acceptable` / `not_evaluated` = calidad media o fila no evaluable por texto vacío.
+- 🟥 `poor` = transcripción pobre.
+
+Los umbrales se centralizan en `transcribe_or_compare.py`:
+- WER excelente: `<= 5%`; aceptable: `<= 15%`.
+- CER excelente: `<= 2%`; aceptable: `<= 8%`.
 
 ---
 
@@ -202,7 +242,8 @@ Búsqueda recursiva en la carpeta seleccionada:
 
 ## Notas de rendimiento
 
-- **Whisper**: mayor calidad suele implicar más VRAM/tiempo (`large`, `large-v3`).
+- **Deepgram** es el motor por defecto para evitar instalar dependencias locales pesadas en equipos sin GPU.
+- **Whisper**: mayor calidad suele implicar más VRAM/tiempo (`large`, `large-v3`). Al seleccionar Whisper desde la GUI, se instalan las dependencias locales necesarias.
 - **Deepgram**: para lotes grandes suele rendir mejor con workers > 1 (según red y cuota API).
 - Si estás limitado por hardware local, Deepgram puede reducir carga local al delegar STT en API.
 
