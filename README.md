@@ -32,18 +32,18 @@ pip install -r requirements.txt
 ```
 
 Dependencias principales para el flujo por defecto (**Deepgram**):
-- `PySide6`
+- `PySide6>=6.5,<7.0`
 - `deepgram-sdk>=3.11.0,<4.0.0`
-- `pandas`
-- `openpyxl`
-- `jiwer`
+- `pandas>=1.5,<3.0`
+- `openpyxl>=3.1,<4.0`
+- `jiwer>=3.0`
 
 > Nota Deepgram: este proyecto usa la API del SDK Python v3 (`PrerecordedOptions` + `listen.rest.v("1").transcribe_file`). Mantén `deepgram-sdk` en `>=3.11.0,<4.0.0`; las versiones mayores cambiaron la superficie del SDK y pueden romper imports/API usados por esta app.
 
 Dependencias locales opcionales para **Whisper**:
-- `openai-whisper`
+- `openai-whisper>=20231117`
 - `torch`
-- `pydub`
+- `pydub>=0.25,<1.0`
 
 > Nota: la GUI arranca con **Deepgram** como motor por defecto y el instalador automático omite las dependencias locales de Whisper hasta que selecciones ese motor, para evitar instalar PyTorch/CUDA en equipos que no lo necesitan. Whisper usa CUDA automáticamente si `torch.cuda.is_available()` es verdadero.
 
