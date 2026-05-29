@@ -184,7 +184,7 @@ class MainWindow(QMainWindow):
 
     def _build_qa_section(self) -> QGroupBox:
         group = QGroupBox("  QA  ")
-        group.setFixedWidth(520)
+        group.setFixedWidth(300)
         grid = QGridLayout(group)
 
         self.check_generate_qa = QCheckBox("Generate QA Reaper project")
