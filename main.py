@@ -92,7 +92,10 @@ class MainWindow(QMainWindow):
             ("Français (FR)", "fr"),
             ("Deutsch (DE)", "de"),
             ("Italiano (IT)", "it"),
-            ("日本語 (JA)", "ja")
+            ("日本語 (JA)", "ja"),
+            ("中文 (ZH/CN)", "zh"),
+            ("한국어 (KO)", "ko"),
+            ("ไทย (TH)", "th")
         ]
         for name, code in languages:
             self.combo_lang.addItem(name, code)
@@ -271,6 +274,7 @@ class MainWindow(QMainWindow):
                     expected_column="Script",
                     output_path=output,
                     sheet_name=None,
+                    language=language,
                 )
 
             QMessageBox.information(self, "OK", "Proceso completado exitosamente")

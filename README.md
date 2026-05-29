@@ -15,7 +15,7 @@ Herramienta de **Speech-to-Text (STT)** con interfaz gráfica (PySide6) para:
 - ✅ **Ingreso de API Key de Deepgram** desde la UI (prompt seguro tipo password).
 - ✅ Soporte de modelo Whisper `large-v3`.
 - ✅ Detección recursiva de audio (`.wav`, `.mp3`, `.m4a`).
-- ✅ Resaltado visual de resultados en Excel (`coincide`: verde/rojo/amarillo).
+- ✅ Métricas reales de calidad STT en Excel (`wer_pct`, `cer_pct`, `quality`) con resaltado verde/amarillo/rojo.
 
 ---
 
@@ -37,7 +37,7 @@ Dependencias principales:
 - `deepgram-sdk`
 - `pandas`
 - `openpyxl`
-- `rapidfuzz`
+- `jiwer`
 - `pydub`
 
 > Nota: Whisper usa CUDA automáticamente si `torch.cuda.is_available()` es verdadero.
@@ -128,12 +128,32 @@ Actualmente el flujo de comparación usa estas columnas:
 
 Salida:
 - `transcripcion`
-- `coincide` (`True`, `False`, `None`)
+- `wer_pct` → Word Error Rate en porcentaje.
+- `cer_pct` → Character Error Rate en porcentaje.
+- `quality` → clasificación de calidad (`excellent`, `acceptable`, `poor`, `not_evaluated`).
 
-Colores en `coincide`:
-- 🟩 `True`
-- 🟥 `False`
-- 🟨 `None`
+Normalización de WER:
+- convierte a minúsculas;
+- elimina puntuación;
+- limpia símbolos/puntuación unicode no alfanuméricos;
+- compacta espacios repetidos;
+- recorta espacios al inicio/final.
+
+Normalización de CER:
+- recorta espacios al inicio/final.
+
+Idiomas sin separación por espacios:
+- Para japonés, chino, coreano y tailandés, el sistema omite WER porque no es una métrica significativa en esos idiomas.
+- En esos casos `wer_pct` queda vacío y se calcula `cer_pct`.
+
+Colores de calidad:
+- 🟩 `excellent` = transcripción excelente.
+- 🟨 `acceptable` / `not_evaluated` = calidad media o fila no evaluable por texto vacío.
+- 🟥 `poor` = transcripción pobre.
+
+Los umbrales se centralizan en `transcribe_or_compare.py`:
+- WER excelente: `<= 5%`; aceptable: `<= 15%`.
+- CER excelente: `<= 2%`; aceptable: `<= 8%`.
 
 ---
 
