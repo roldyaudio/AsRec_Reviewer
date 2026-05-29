@@ -70,7 +70,7 @@ class MainWindow(QMainWindow):
 
         layout_main.addWidget(self._build_engine_language_section(), alignment=Qt.AlignmentFlag.AlignCenter)
         layout_main.addWidget(self._build_paths_section())
-        layout_main.addWidget(self._build_qa_section())
+        layout_main.addWidget(self._build_qa_section(), alignment=Qt.AlignmentFlag.AlignCenter)
         
 
         btn_run = QPushButton("Run")
@@ -86,43 +86,32 @@ class MainWindow(QMainWindow):
 
     def _build_engine_language_section(self) -> QGroupBox:
         group = QGroupBox("  Engine and Language  ")
-        
-        # 1. Hacemos el GroupBox más pequeño ajustando su tamaño máximo
-        # Puedes cambiar 300 por el ancho en píxeles que mejor se adapte a tu diseño
-        group.setFixedWidth(260)
-        # group.setAlignment(Qt.AlignmentFlag.AlignHLeft)
-        # group.setFixedHeight(200) 
-        
-        grid = QGridLayout(group)
-        
-        # 2. Centramos el contenido dentro del QGridLayout añadiendo márgenes y espaciado
-        grid.setContentsMargins(5, 5, 5, 5) # Margen interno (izq, arriba, der, abajo)
-        grid.setSpacing(5)                     # Espacio entre filas y columnas
+        group.setFixedWidth(520)
 
-        # Fila 0: Mode
-        grid.addWidget(QLabel("Mode:"), 0, 0, Qt.AlignmentFlag.AlignHCenter)
+        grid = QGridLayout(group)
+        grid.setContentsMargins(10, 10, 10, 10)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(10)
+
+        def add_field(label_text: str, widget: QWidget, row: int, column: int):
+            field = QWidget()
+            field_layout = QGridLayout(field)
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setHorizontalSpacing(6)
+
+            label = QLabel(label_text)
+            label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            field_layout.addWidget(label, 0, 0)
+            field_layout.addWidget(widget, 0, 1)
+            field_layout.setColumnStretch(1, 1)
+
+            grid.addWidget(field, row, column)
+
         self.combo_mode = QComboBox()
         self.combo_mode.addItems(["Compare", "Transcribe-Only"])
         self.combo_mode.currentIndexChanged.connect(self.update_input_states)
-        grid.addWidget(self.combo_mode, 0, 1)
+        add_field("Mode:", self.combo_mode, 0, 0)
 
-        # Fila 1: Engine
-        grid.addWidget(QLabel("Engine:"), 1, 0, Qt.AlignmentFlag.AlignHCenter)
-        self.combo_engine = QComboBox()
-        self.combo_engine.addItem("Deepgram", "deepgram")
-        self.combo_engine.addItem("Whisper", "whisper")
-        self.combo_engine.currentIndexChanged.connect(self.update_model_options)
-        self.combo_engine.currentIndexChanged.connect(self.update_input_states)
-        grid.addWidget(self.combo_engine, 1, 1)
-
-        # Fila 2: Model
-        grid.addWidget(QLabel("Model:"), 2, 0, Qt.AlignmentFlag.AlignHCenter)
-        self.combo_model = QComboBox()
-        grid.addWidget(self.combo_model, 2, 1)
-        self.update_model_options()
-
-        # Fila 3: Language
-        grid.addWidget(QLabel("Language:"), 3, 0, Qt.AlignmentFlag.AlignHCenter)
         self.combo_lang = QComboBox()
         languages = [
             ("Español (ES/MX)", "es"),
@@ -138,7 +127,21 @@ class MainWindow(QMainWindow):
         ]
         for name, code in languages:
             self.combo_lang.addItem(name, code)
-        grid.addWidget(self.combo_lang, 3, 1)
+        add_field("Language:", self.combo_lang, 0, 1)
+
+        self.combo_engine = QComboBox()
+        self.combo_engine.addItem("Deepgram", "deepgram")
+        self.combo_engine.addItem("Whisper", "whisper")
+        self.combo_engine.currentIndexChanged.connect(self.update_model_options)
+        self.combo_engine.currentIndexChanged.connect(self.update_input_states)
+        add_field("Engine:", self.combo_engine, 1, 0)
+
+        self.combo_model = QComboBox()
+        add_field("Model:", self.combo_model, 1, 1)
+        self.update_model_options()
+
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
 
         return group
 
@@ -181,13 +184,14 @@ class MainWindow(QMainWindow):
 
     def _build_qa_section(self) -> QGroupBox:
         group = QGroupBox("  QA  ")
+        group.setFixedWidth(520)
         grid = QGridLayout(group)
 
         self.check_generate_qa = QCheckBox("Generate QA Reaper project")
         self.check_generate_qa.setToolTip(
             "Creates a .rpp file next to the Excel output with one track per quality value."
         )
-        grid.addWidget(self.check_generate_qa, 0, 0, 1, 3)
+        grid.addWidget(self.check_generate_qa, 0, 0, alignment=Qt.AlignmentFlag.AlignCenter)
 
         return group
 
