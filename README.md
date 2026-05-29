@@ -16,6 +16,7 @@ Herramienta de **Speech-to-Text (STT)** con interfaz gráfica (PySide6) para:
 - ✅ Soporte de modelo Whisper `large-v3`.
 - ✅ Detección recursiva de audio (`.wav`, `.mp3`, `.m4a`).
 - ✅ Métricas reales de calidad STT en Excel (`wer_pct`, `cer_pct`, `quality`) con resaltado verde/amarillo/rojo.
+- ✅ Sección **QA** opcional para generar un proyecto de REAPER (`.rpp`) con tracks separados por `quality`.
 
 ---
 
@@ -70,15 +71,20 @@ python lib_installer.py
 python main.py
 ```
 
-La aplicación abre una interfaz con los campos:
-- **Modo**: `Compare` o `Transcribe-Only`
-- **Motor**: `Deepgram` por defecto, o `Whisper` si necesitas transcripción local
-- **Modelo**: según motor
-- **Idioma**
-- **Carpeta de audios**
-- **Excel (Script)** (solo en Compare)
-- **Glosario** (habilitado cuando `Motor = Deepgram`, tanto en Compare como en Transcribe-Only)
-- **Output**
+La aplicación abre una interfaz organizada en secciones:
+
+- **Engine and Language**:
+  - **Mode**: `Compare` o `Transcribe-Only`
+  - **Engine**: `Deepgram` por defecto, o `Whisper` si necesitas transcripción local
+  - **Model**: según motor
+  - **Language**
+- **Paths**:
+  - **Audio file folder**
+  - **Script** (solo en Compare)
+  - **Glossary** (habilitado cuando `Engine = Deepgram`, tanto en Compare como en Transcribe-Only)
+  - **Output file**
+- **QA**:
+  - **Generate QA Reaper project**: disponible en Compare para crear un `.rpp` junto al Excel de salida.
 
 ---
 
@@ -176,6 +182,20 @@ Los umbrales se centralizan en `transcribe_or_compare.py`:
 - CER excelente: `<= 2%`; aceptable: `<= 8%`.
 
 ---
+
+
+## QA Reaper project
+
+En modo **Compare**, el checkbox **Generate QA Reaper project** crea un archivo `.rpp` junto al Excel de salida, usando el mismo nombre con sufijo `_qa.rpp`. Por ejemplo, si el Excel se guarda como `resultado.xlsx`, el proyecto se guarda como `resultado_qa.rpp`.
+
+El proyecto de REAPER contiene un track por cada valor de `quality` soportado por el reporte:
+
+- `excellent`
+- `acceptable`
+- `not_evaluated`
+- `poor`
+
+Los items se insertan siguiendo el orden del Script/report y cada track avanza su propia línea de tiempo con separación entre clips. El generador intenta resolver cada audio contra la carpeta **Audio file folder** usando primero la ruta relativa del reporte y luego el nombre de archivo.
 
 ## Glosario Deepgram (Excel)
 

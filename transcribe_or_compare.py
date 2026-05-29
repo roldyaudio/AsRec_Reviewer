@@ -1,6 +1,8 @@
 import argparse
 import os
 import sys
+from pathlib import Path
+
 import jiwer
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
@@ -11,6 +13,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
+
+from rpp_qa import QAProjectConfig, generate_qa_project
 
 
 # Colores para Excel
@@ -507,6 +511,26 @@ def compare_with_excel(
             ws.cell(row=row_idx, column=col_idx).fill = fill
     wb.save(output_path)
     return results
+
+
+def export_qa_reaper_project(
+    audio_folder: str,
+    results: List[ComparisonResult],
+    output_path: str,
+) -> str:
+    """Export comparison results as a REAPER QA project grouped by quality."""
+    rpp_path = Path(output_path)
+    if rpp_path.suffix.lower() != ".rpp":
+        rpp_path = rpp_path.with_suffix(".rpp")
+
+    generate_qa_project(
+        QAProjectConfig(
+            source_root=Path(audio_folder),
+            output_file=rpp_path,
+        ),
+        results,
+    )
+    return str(rpp_path)
 
 
 def parse_args() -> argparse.Namespace:
