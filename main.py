@@ -110,7 +110,7 @@ class MainWindow(QMainWindow):
         self.combo_mode = QComboBox()
         self.combo_mode.addItems(["Compare", "Transcribe-Only"])
         self.combo_mode.currentIndexChanged.connect(self.update_input_states)
-        add_field("Mode:", self.combo_mode, 0, 0)
+        add_field("Mode:  ", self.combo_mode, 0, 0)
 
         self.combo_lang = QComboBox()
         languages = [
@@ -137,7 +137,7 @@ class MainWindow(QMainWindow):
         add_field("Engine:", self.combo_engine, 1, 0)
 
         self.combo_model = QComboBox()
-        add_field("Model:", self.combo_model, 1, 1)
+        add_field("Model:      ", self.combo_model, 1, 1)
         self.update_model_options()
 
         grid.setColumnStretch(0, 1)
