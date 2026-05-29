@@ -7,7 +7,7 @@ import jiwer
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 
-from deepgram import DeepgramClient, FileSource, PrerecordedOptions
+from deepgram import DeepgramClient, PrerecordedOptions
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
@@ -158,7 +158,7 @@ class DeepgramTranscriber(BaseTranscriber):
         print(f"[INFO] Nivel actual: {level}")
 
     def transcribe(self, audio_path: str, language: Optional[str] = None) -> str:
-        payload: FileSource
+        payload: Dict[str, bytes]
         with open(audio_path, "rb") as file:
             payload = {"buffer": file.read()}
 
