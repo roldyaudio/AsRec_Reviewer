@@ -70,7 +70,7 @@ class MainWindow(QMainWindow):
 
         layout_main.addWidget(self._build_engine_language_section(), alignment=Qt.AlignmentFlag.AlignCenter)
         layout_main.addWidget(self._build_paths_section())
-        layout_main.addWidget(self._build_qa_section())
+        layout_main.addWidget(self._build_qa_section(), alignment=Qt.AlignmentFlag.AlignCenter)
         
 
         btn_run = QPushButton("Run")
@@ -95,14 +95,15 @@ class MainWindow(QMainWindow):
 
         def add_field(label_text: str, widget: QWidget, row: int, column: int):
             field = QWidget()
-            field_layout = QVBoxLayout(field)
+            field_layout = QGridLayout(field)
             field_layout.setContentsMargins(0, 0, 0, 0)
-            field_layout.setSpacing(4)
+            field_layout.setHorizontalSpacing(6)
 
             label = QLabel(label_text)
-            label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            field_layout.addWidget(label)
-            field_layout.addWidget(widget)
+            label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            field_layout.addWidget(label, 0, 0)
+            field_layout.addWidget(widget, 0, 1)
+            field_layout.setColumnStretch(1, 1)
 
             grid.addWidget(field, row, column)
 
@@ -183,13 +184,14 @@ class MainWindow(QMainWindow):
 
     def _build_qa_section(self) -> QGroupBox:
         group = QGroupBox("  QA  ")
+        group.setFixedWidth(520)
         grid = QGridLayout(group)
 
         self.check_generate_qa = QCheckBox("Generate QA Reaper project")
         self.check_generate_qa.setToolTip(
             "Creates a .rpp file next to the Excel output with one track per quality value."
         )
-        grid.addWidget(self.check_generate_qa, 0, 0, 1, 3)
+        grid.addWidget(self.check_generate_qa, 0, 0, alignment=Qt.AlignmentFlag.AlignCenter)
 
         return group
 
