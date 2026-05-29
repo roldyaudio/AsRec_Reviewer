@@ -195,7 +195,9 @@ El proyecto de REAPER contiene un track por cada valor de `quality` soportado po
 - `not_evaluated`
 - `poor`
 
-Los items se insertan siguiendo el orden del Script/report y cada track avanza su propia línea de tiempo con separación entre clips. El generador intenta resolver cada audio contra la carpeta **Audio file folder** usando primero la ruta relativa del reporte y luego el nombre de archivo.
+Los items se insertan siguiendo el orden del Script/report en una línea de tiempo global: cada clip cae en el track de su `quality`, pero el siguiente clip comienza después del anterior más la separación configurada, evitando overlapping entre tracks. El generador intenta resolver cada audio contra la carpeta **Audio file folder** usando primero la ruta relativa del reporte y luego el nombre de archivo.
+
+Los colores suaves de QA se centralizan como variables globales en `rpp_qa.py` y se reutilizan también para pintar el Excel, manteniendo la misma paleta: verde para `excellent`, amarillo para `acceptable` / `not_evaluated` y rojo para `poor`.
 
 ## Glosario Deepgram (Excel)
 

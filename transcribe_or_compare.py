@@ -14,13 +14,23 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
-from rpp_qa import QAProjectConfig, generate_qa_project
+from rpp_qa import (
+    QAProjectConfig,
+    QA_COLOR_GREEN,
+    QA_COLOR_RED,
+    QA_COLOR_YELLOW,
+    generate_qa_project,
+)
 
 
-# Colores para Excel
-GREEN_FILL = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-RED_FILL = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-YELLOW_FILL = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+# Colores suaves compartidos con el proyecto QA de REAPER.
+def excel_fill(hex_color: str) -> PatternFill:
+    return PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
+
+
+GREEN_FILL = excel_fill(QA_COLOR_GREEN)
+RED_FILL = excel_fill(QA_COLOR_RED)
+YELLOW_FILL = excel_fill(QA_COLOR_YELLOW)
 
 # STT quality thresholds. Lower error rates are better.
 WER_EXCELLENT_THRESHOLD = 0.05
