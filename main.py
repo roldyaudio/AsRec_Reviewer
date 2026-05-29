@@ -64,13 +64,14 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(container)
         layout_main = QVBoxLayout(container)
 
-        label_title = QLabel("<font size=6>Speech to text tool</font>")
+        label_title = QLabel("<font size=6>Asrec Reviewer</font>")
         label_title.setAlignment(Qt.AlignHCenter)
         layout_main.addWidget(label_title)
 
-        layout_main.addWidget(self._build_engine_language_section())
+        layout_main.addWidget(self._build_engine_language_section(), alignment=Qt.AlignmentFlag.AlignCenter)
         layout_main.addWidget(self._build_paths_section())
         layout_main.addWidget(self._build_qa_section())
+        
 
         btn_run = QPushButton("Run")
         btn_run.setStyleSheet("font-weight: bold; height: 30px; max-width: 160px;")
@@ -80,20 +81,33 @@ class MainWindow(QMainWindow):
         layout_main.setAlignment(btn_run, Qt.AlignHCenter)
 
         center_app(self, 660, 460)
-        self.setFixedSize(660, 460)
+        #self.setFixedSize(660, 460)
         self.update_input_states()
 
     def _build_engine_language_section(self) -> QGroupBox:
-        group = QGroupBox("Engine and Language")
+        group = QGroupBox("  Engine and Language  ")
+        
+        # 1. Hacemos el GroupBox más pequeño ajustando su tamaño máximo
+        # Puedes cambiar 300 por el ancho en píxeles que mejor se adapte a tu diseño
+        group.setFixedWidth(260)
+        # group.setAlignment(Qt.AlignmentFlag.AlignHLeft)
+        # group.setFixedHeight(200) 
+        
         grid = QGridLayout(group)
+        
+        # 2. Centramos el contenido dentro del QGridLayout añadiendo márgenes y espaciado
+        grid.setContentsMargins(5, 5, 5, 5) # Margen interno (izq, arriba, der, abajo)
+        grid.setSpacing(5)                     # Espacio entre filas y columnas
 
-        grid.addWidget(QLabel("Mode:"), 0, 0)
+        # Fila 0: Mode
+        grid.addWidget(QLabel("Mode:"), 0, 0, Qt.AlignmentFlag.AlignHCenter)
         self.combo_mode = QComboBox()
         self.combo_mode.addItems(["Compare", "Transcribe-Only"])
         self.combo_mode.currentIndexChanged.connect(self.update_input_states)
         grid.addWidget(self.combo_mode, 0, 1)
 
-        grid.addWidget(QLabel("Engine:"), 1, 0)
+        # Fila 1: Engine
+        grid.addWidget(QLabel("Engine:"), 1, 0, Qt.AlignmentFlag.AlignHCenter)
         self.combo_engine = QComboBox()
         self.combo_engine.addItem("Deepgram", "deepgram")
         self.combo_engine.addItem("Whisper", "whisper")
@@ -101,12 +115,14 @@ class MainWindow(QMainWindow):
         self.combo_engine.currentIndexChanged.connect(self.update_input_states)
         grid.addWidget(self.combo_engine, 1, 1)
 
-        grid.addWidget(QLabel("Model:"), 2, 0)
+        # Fila 2: Model
+        grid.addWidget(QLabel("Model:"), 2, 0, Qt.AlignmentFlag.AlignHCenter)
         self.combo_model = QComboBox()
         grid.addWidget(self.combo_model, 2, 1)
         self.update_model_options()
 
-        grid.addWidget(QLabel("Language:"), 3, 0)
+        # Fila 3: Language
+        grid.addWidget(QLabel("Language:"), 3, 0, Qt.AlignmentFlag.AlignHCenter)
         self.combo_lang = QComboBox()
         languages = [
             ("Español (ES/MX)", "es"),
@@ -127,7 +143,7 @@ class MainWindow(QMainWindow):
         return group
 
     def _build_paths_section(self) -> QGroupBox:
-        group = QGroupBox("Paths")
+        group = QGroupBox("  Paths  ")
         grid = QGridLayout(group)
 
         grid.addWidget(QLabel("Audio file folder:"), 0, 0)
@@ -164,7 +180,7 @@ class MainWindow(QMainWindow):
         return group
 
     def _build_qa_section(self) -> QGroupBox:
-        group = QGroupBox("QA")
+        group = QGroupBox("  QA  ")
         grid = QGridLayout(group)
 
         self.check_generate_qa = QCheckBox("Generate QA Reaper project")
