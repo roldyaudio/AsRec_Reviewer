@@ -183,11 +183,11 @@ class MainWindow(QMainWindow):
         return group
 
     def _build_qa_section(self) -> QGroupBox:
-        group = QGroupBox("  QA  ")
+        group = QGroupBox("  Quality Warnings  ")
         group.setFixedWidth(300)
         grid = QGridLayout(group)
 
-        self.check_generate_qa = QCheckBox("Generate QA Reaper project")
+        self.check_generate_qa = QCheckBox("Generate Warning session.")
         self.check_generate_qa.setToolTip(
             "Creates a .rpp file next to the Excel output with one track per quality value."
         )
