@@ -18,6 +18,18 @@ QUALITY_TRACK_NAMES = {
     "poor": "poor",
 }
 
+# Soft QA colors shared with the Excel report palette.
+# Values are RGB hex strings so they are easy to adjust in one place.
+QA_COLOR_GREEN = "C6EFCE"
+QA_COLOR_YELLOW = "FFEB9C"
+QA_COLOR_RED = "FFC7CE"
+QUALITY_TRACK_COLORS = {
+    "excellent": QA_COLOR_GREEN,
+    "acceptable": QA_COLOR_YELLOW,
+    "not_evaluated": QA_COLOR_YELLOW,
+    "poor": QA_COLOR_RED,
+}
+
 
 class QAResult(Protocol):
     audio_file: str
@@ -30,6 +42,18 @@ def new_guid() -> str:
 
 def _rpp_quote(value: str) -> str:
     return value.replace("\\", "/").replace('"', "'")
+
+
+def reaper_color_from_hex(hex_color: str) -> int:
+    """Convert an RGB hex color to REAPER's native custom-color integer."""
+    clean = hex_color.strip().lstrip("#")
+    if len(clean) != 6:
+        raise ValueError(f"Invalid RGB hex color: {hex_color}")
+
+    red = int(clean[0:2], 16)
+    green = int(clean[2:4], 16)
+    blue = int(clean[4:6], 16)
+    return 0x1000000 | red | (green << 8) | (blue << 16)
 
 
 @dataclass
@@ -99,6 +123,7 @@ class Item:
 @dataclass
 class Track:
     name: str
+    color: str
     items: list[Item] = field(default_factory=list)
     guid: str = field(default_factory=new_guid)
 
@@ -107,7 +132,7 @@ class Track:
         node.lines.extend(
             [
                 f'NAME "{_rpp_quote(self.name)}"',
-                "PEAKCOL 16576",
+                f"PEAKCOL {reaper_color_from_hex(self.color)}",
                 "BEAT -1",
                 "AUTOMODE 0",
                 "PANLAWFLAGS 3",
@@ -185,6 +210,7 @@ class QAProjectConfig:
     output_file: Path
     spacing_seconds: float = 3.0
     start_offset: float = 0.0
+    use_global_timeline: bool = True
     sample_rate: int = 48_000
 
 
@@ -261,8 +287,12 @@ def generate_qa_project(cfg: QAProjectConfig, results: Sequence[QAResult]) -> Pr
     if not audio_index:
         raise ValueError(f"No audio files found under: {cfg.source_root}")
 
-    tracks = {quality: Track(name=QUALITY_TRACK_NAMES[quality]) for quality in QUALITY_TRACK_ORDER}
+    tracks = {
+        quality: Track(name=QUALITY_TRACK_NAMES[quality], color=QUALITY_TRACK_COLORS[quality])
+        for quality in QUALITY_TRACK_ORDER
+    }
     cursors = {quality: cfg.start_offset for quality in QUALITY_TRACK_ORDER}
+    global_cursor = cfg.start_offset
     iid = 1
     missing: list[str] = []
 
@@ -274,15 +304,20 @@ def generate_qa_project(cfg: QAProjectConfig, results: Sequence[QAResult]) -> Pr
 
         quality = _normalize_quality(result.quality)
         length = guessed_item_length(audio_path)
+        position = global_cursor if cfg.use_global_timeline else cursors[quality]
         tracks[quality].items.append(
             Item(
                 file_path=audio_path.resolve(),
-                position=cursors[quality],
+                position=position,
                 length=length,
                 iid=iid,
             )
         )
-        cursors[quality] += length + cfg.spacing_seconds
+        next_position = position + length + cfg.spacing_seconds
+        if cfg.use_global_timeline:
+            global_cursor = next_position
+        else:
+            cursors[quality] = next_position
         iid += 1
 
     if missing:
