@@ -33,10 +33,12 @@ pip install -r requirements.txt
 
 Dependencias principales para el flujo por defecto (**Deepgram**):
 - `PySide6`
-- `deepgram-sdk`
+- `deepgram-sdk>=3.11.0,<4.0.0`
 - `pandas`
 - `openpyxl`
 - `jiwer`
+
+> Nota Deepgram: este proyecto usa la API del SDK Python v3 (`PrerecordedOptions` + `listen.rest.v("1").transcribe_file`). Mantén `deepgram-sdk` en `>=3.11.0,<4.0.0`; las versiones mayores cambiaron la superficie del SDK y pueden romper imports/API usados por esta app.
 
 Dependencias locales opcionales para **Whisper**:
 - `openai-whisper`
