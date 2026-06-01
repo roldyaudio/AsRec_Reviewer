@@ -34,6 +34,7 @@ QUALITY_TRACK_COLORS = {
 class QAResult(Protocol):
     audio_file: str
     quality: str
+    expected_text: str
 
 
 def new_guid() -> str:
@@ -42,6 +43,12 @@ def new_guid() -> str:
 
 def _rpp_quote(value: str) -> str:
     return value.replace("\\", "/").replace('"', "'")
+
+
+def _rpp_note_lines(value: str) -> list[str]:
+    """Format multiline text for a REAPER NOTES block."""
+    normalized = str(value).replace("\r\n", "\n").replace("\r", "\n")
+    return [f"|{_rpp_quote(line)}" for line in normalized.split("\n")]
 
 
 def reaper_color_from_hex(hex_color: str) -> int:
@@ -86,6 +93,7 @@ class Item:
     iid: int
     guid: str = field(default_factory=new_guid)
     iguid: str = field(default_factory=new_guid)
+    notes: str | None = None
 
     @property
     def name(self) -> str:
@@ -114,6 +122,11 @@ class Item:
                 f"GUID {self.guid}",
             ]
         )
+        if self.notes is not None:
+            notes = RPPNode("NOTES")
+            notes.lines.extend(_rpp_note_lines(self.notes))
+            node.children.append(notes)
+
         source = RPPNode("SOURCE", ["WAVE"])
         source.lines.append(f'FILE "{_rpp_quote(str(self.file_path))}"')
         node.children.append(source)
@@ -311,6 +324,7 @@ def generate_qa_project(cfg: QAProjectConfig, results: Sequence[QAResult]) -> Pr
                 position=position,
                 length=length,
                 iid=iid,
+                notes=getattr(result, "expected_text", ""),
             )
         )
         next_position = position + length + cfg.spacing_seconds
