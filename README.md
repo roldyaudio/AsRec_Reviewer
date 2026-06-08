@@ -115,6 +115,7 @@ Modelo disponible:
 Comportamiento:
 - Solicita la **DEEPGRAM_API_KEY** al presionar **Run**.
 - Procesa audios en paralelo con workers.
+- Reintenta errores transitorios por audio (timeout/red/rate limit/5xx) con backoff exponencial.
 - Si se carga un glosario, envía `keyterms` a Deepgram (Nova-3).
 - Muestra en consola el conteo de keyterms reales y nivel recomendado:
   - 🟢 ideal: 10–50
@@ -132,6 +133,21 @@ En Windows PowerShell:
 
 ```powershell
 $env:DEEPGRAM_MAX_WORKERS = "8"
+```
+
+Configuración de reintentos:
+
+```bash
+# opcional (default: 3 intentos, backoff base 2s)
+export DEEPGRAM_MAX_RETRIES=3
+export DEEPGRAM_RETRY_BACKOFF_SECONDS=2
+```
+
+En Windows PowerShell:
+
+```powershell
+$env:DEEPGRAM_MAX_RETRIES = "3"
+$env:DEEPGRAM_RETRY_BACKOFF_SECONDS = "2"
 ```
 
 ---
@@ -159,6 +175,10 @@ Salida:
 - `wer_pct` → Word Error Rate en porcentaje.
 - `cer_pct` → Character Error Rate en porcentaje.
 - `quality` → clasificación de calidad (`excellent`, `acceptable`, `poor`, `not_evaluated`).
+- `transcription_status` → estado operativo de transcripción/match (`ok`, `failed`, `missing_audio`, `empty_transcript`).
+- `transcription_error` → detalle del error real por audio cuando existe.
+
+Si se detectan audios que fueron procesados pero no tienen `Filename` exacto en el Excel, el archivo de salida agrega una hoja `unmatched_audio` con `transcription_status = no_excel_match` para facilitar la corrección de nombres/rutas.
 
 Normalización de WER:
 - convierte a minúsculas;
@@ -182,6 +202,39 @@ Colores de calidad:
 Los umbrales se centralizan en `transcribe_or_compare.py`:
 - WER excelente: `<= 5%`; aceptable: `<= 15%`.
 - CER excelente: `<= 2%`; aceptable: `<= 8%`.
+
+---
+
+## Validación previa, dry run y logs
+
+Antes de llamar al motor STT, la app imprime una validación previa con:
+
+- audios detectados (`.wav`, `.mp3`, `.m4a`);
+- filas con `Filename` en el Excel;
+- coincidencias exactas entre `Filename` y rutas relativas detectadas;
+- `Filename` sin audio detectado;
+- audios detectados sin fila en Excel;
+- advertencia cuando el ratio de match exacto es bajo.
+
+Para validar un lote grande sin gastar API ni transcribir, usa el checkbox **Validate only (dry run)** en la GUI o:
+
+```bash
+python transcribe_or_compare.py --mode compare --audio-folder ruta/a/audios --excel ruta/script.xlsx --dry-run
+```
+
+Cada ejecución crea un log persistente junto al Excel de salida con nombre tipo:
+
+```text
+asrec_run_2026-06-08_1530.log
+```
+
+También puedes definir una ruta explícita por CLI:
+
+```bash
+python transcribe_or_compare.py --log-file ruta/asrec_run.log
+```
+
+Para lotes grandes en portátil/Wi‑Fi, se recomienda empezar con `DEEPGRAM_MAX_WORKERS=1` o `2`, hacer un dry run, probar 10–20 audios y recién después escalar el lote.
 
 ---
 

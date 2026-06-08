@@ -193,6 +193,12 @@ class MainWindow(QMainWindow):
         )
         grid.addWidget(self.check_generate_qa, 0, 0, alignment=Qt.AlignmentFlag.AlignCenter)
 
+        self.check_dry_run = QCheckBox("Validate only (dry run).")
+        self.check_dry_run.setToolTip(
+            "Validates audio/Excel matches and writes a log without transcribing or calling Deepgram."
+        )
+        grid.addWidget(self.check_dry_run, 1, 0, alignment=Qt.AlignmentFlag.AlignCenter)
+
         return group
 
     # -------- MÉTODOS DE INTERFAZ --------
@@ -269,6 +275,7 @@ class MainWindow(QMainWindow):
             model = self.combo_model.currentText().lower()
             engine = self.combo_engine.currentData()
             generate_qa = self.check_generate_qa.isChecked()
+            dry_run = self.check_dry_run.isChecked()
 
             language = self.combo_lang.currentData()
 
@@ -290,66 +297,93 @@ class MainWindow(QMainWindow):
             elif output_path.suffix.lower() != ".xlsx":
                 output_path = output_path.with_suffix(".xlsx")
 
-            if engine == "whisper":
-                install_pytorch_cuda_forced()
-                install_requirements_in_directory(
-                    APP_DIR,
-                    only_packages=LOCAL_STT_DEPENDENCIES,
-                )
-                transcriber = core.WhisperTranscriber(model_size=model)
-            elif engine == "deepgram":
-                if not self._deepgram_api_key:
-                    deepgram_api_key, ok = QInputDialog.getText(
-                        self,
-                        "Deepgram API Key",
-                        "Paste your DEEPGRAM_API_KEY:",
-                        QLineEdit.Password,
-                    )
-                    deepgram_api_key = deepgram_api_key.strip()
-                    if not ok or not deepgram_api_key:
-                        QMessageBox.warning(self, "Error", "You must enter a valid DEEPGRAM_API_KEY")
-                        return
-                    self._deepgram_api_key = deepgram_api_key
-                deepgram_workers = int(os.getenv("DEEPGRAM_MAX_WORKERS", "4"))
-                transcriber = core.DeepgramTranscriber(
-                    api_key=self._deepgram_api_key,
-                    model=model,
-                    max_workers=deepgram_workers,
-                    glossary_path=glossary_path or None,
-                )
-            else:
-                raise ValueError(f"Unsupported engine: {engine}")
-
-            transcripts = core.transcribe_folder(
-                transcriber=transcriber,
-                folder_path=audio_folder,
-                language=language,
-            )
-
-            qa_output = None
-            if mode == "Transcribe-Only":
-                core.export_transcriptions_to_excel(transcripts, str(output_path))
-            else:
-                results = core.compare_with_excel(
-                    excel_path=excel,
-                    transcripts=transcripts,
+            with core.run_logging(output_path=str(output_path)) as log_path:
+                core.validate_inputs(
+                    audio_folder=audio_folder,
+                    excel_path=excel if mode == "Compare" else None,
                     audio_column="Filename",
-                    expected_column="Script",
-                    output_path=str(output_path),
                     sheet_name=None,
+                )
+
+                if dry_run:
+                    QMessageBox.information(
+                        self,
+                        "Dry run completed",
+                        f"Validation completed without transcribing.\nLog: {log_path}",
+                    )
+                    return
+
+                if engine == "whisper":
+                    install_pytorch_cuda_forced()
+                    install_requirements_in_directory(
+                        APP_DIR,
+                        only_packages=LOCAL_STT_DEPENDENCIES,
+                    )
+                    transcriber = core.WhisperTranscriber(model_size=model)
+                elif engine == "deepgram":
+                    if not self._deepgram_api_key:
+                        deepgram_api_key, ok = QInputDialog.getText(
+                            self,
+                            "Deepgram API Key",
+                            "Paste your DEEPGRAM_API_KEY:",
+                            QLineEdit.Password,
+                        )
+                        deepgram_api_key = deepgram_api_key.strip()
+                        if not ok or not deepgram_api_key:
+                            QMessageBox.warning(self, "Error", "You must enter a valid DEEPGRAM_API_KEY")
+                            return
+                        self._deepgram_api_key = deepgram_api_key
+                    deepgram_workers = int(os.getenv("DEEPGRAM_MAX_WORKERS", "4"))
+                    deepgram_retries = int(os.getenv("DEEPGRAM_MAX_RETRIES", str(core.DEFAULT_DEEPGRAM_RETRIES)))
+                    deepgram_backoff = float(
+                        os.getenv(
+                            "DEEPGRAM_RETRY_BACKOFF_SECONDS",
+                            str(core.DEFAULT_DEEPGRAM_RETRY_BACKOFF_SECONDS),
+                        )
+                    )
+                    transcriber = core.DeepgramTranscriber(
+                        api_key=self._deepgram_api_key,
+                        model=model,
+                        max_workers=deepgram_workers,
+                        glossary_path=glossary_path or None,
+                        max_retries=deepgram_retries,
+                        retry_backoff_seconds=deepgram_backoff,
+                    )
+                else:
+                    raise ValueError(f"Unsupported engine: {engine}")
+
+                transcripts = core.transcribe_folder(
+                    transcriber=transcriber,
+                    folder_path=audio_folder,
                     language=language,
                 )
-                if generate_qa:
-                    qa_output = core.export_qa_reaper_project(
-                        audio_folder=audio_folder,
-                        results=results,
-                        output_path=output_path.with_name(f"{output_path.stem}_qa.rpp"),
-                    )
+                core.summarize_transcriptions(transcripts)
 
-            message = "Process completed successfully"
-            if qa_output:
-                message += f"\nQA Reaper project: {qa_output}"
-            QMessageBox.information(self, "OK", message)
+                qa_output = None
+                if mode == "Transcribe-Only":
+                    core.export_transcriptions_to_excel(transcripts, str(output_path))
+                else:
+                    results = core.compare_with_excel(
+                        excel_path=excel,
+                        transcripts=transcripts,
+                        audio_column="Filename",
+                        expected_column="Script",
+                        output_path=str(output_path),
+                        sheet_name=None,
+                        language=language,
+                    )
+                    if generate_qa:
+                        qa_output = core.export_qa_reaper_project(
+                            audio_folder=audio_folder,
+                            results=results,
+                            output_path=output_path.with_name(f"{output_path.stem}_qa.rpp"),
+                        )
+
+                message = "Process completed successfully"
+                if qa_output:
+                    message += f"\nQA Reaper project: {qa_output}"
+                message += f"\nLog: {log_path}"
+                QMessageBox.information(self, "OK", message)
 
         except Exception as e:
             error_text = str(e)
